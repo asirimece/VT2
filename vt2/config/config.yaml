@@ -1,0 +1,10 @@
+defaults:
+  - dataset: bci_iv2a
+  - experiment: base
+  - hook: hook
+  - feature_extraction: feature_extraction
+  - tracker: tracker
+  - wandb: dev
+  - _self_
+
+seed: 1

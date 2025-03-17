@@ -1,0 +1,58 @@
+name: 'BCI_IV2a'
+home: './data/BCI_IV2a'
+dataset: 'BNCI2014_001'
+n_subjects: 9
+subjects: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+sfreq: 250
+n_channels: 26
+eeg_channels: ['Fz', 'FC3', 'FC1', 'FCz', 'FC2', 'FC4', 'C5', 'C3', 'C1', 'Cz', 'C2', 'C4', 'C6', 'CP3', 'CP1', 'CPz', 'CP2', 'CP4', 'P1', 'Pz', 'P2', 'POz']
+eog_channels: ['EOG1', 'EOG2', 'EOG3']
+event_markers:
+  left_hand: 1
+  right_hand: 2
+  both_feet: 3
+  tongue: 4
+
+# Preprocessing steps 
+preprocessing:
+  remove_eog_artifacts: true
+  show_ica_plots: false     # if true, show interactive plots
+  save_ica_plots: true      # if true, save them to disk
+  ica_plots_dir: "./ica_plots"
+  raw_preprocessors:
+    bandpass_filter:
+      kwargs:
+        low: 4
+        high: 38
+        method: 'iir'
+        notch_freq: 50
+  epoching:
+    kwargs:
+      window_length: 4.0
+      step_size: 0.5
+      tmin: -0.5
+      tmax: 3.5
+  data_split:
+    kwargs:
+      train_session: "0train"
+      test_session: "1test"
+  exponential_moving_standardization:
+    kwargs:
+      apply_on: "training"
+      smoothing_factor: 0.1
+
+# (Other sections like model, training, experiment settings, etc.)
+model:
+  name: 'eeg_net'  # or 'deep4net', 'shallowfbcspnet'
+  # model-specific hyperparameters...
+
+experiment:
+  n_runs: 10
+  evaluation_metrics:
+    - 'accuracy'
+    - 'kappa'
+    - 'confusion_matrix'
+
+tracker:
+  wandb_project: 'bci_iv2a_project'
+  wandb_mode: 'online'

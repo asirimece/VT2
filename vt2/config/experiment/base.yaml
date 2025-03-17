@@ -1,0 +1,47 @@
+# vt2/config/training/base.yaml
+# This config file orchestrates the baseline training.
+# You can choose the mode ("single" for subject‐by‐subject or "pooled" for all subjects pooled)
+# and set training hyperparameters.
+
+defaults:
+  - _self_
+  - model: deep4net  # use the deep4net config we defined earlier if needed
+
+training:
+  mode: "single"         # Options: "single" or "pooled"
+  n_runs: 5              # Number of runs (for cross-validation/repeated experiments)
+  epochs: 50             # Number of training epochs
+  batch_size: 64
+  learning_rate: 0.001
+  optimizer: "adam"      # Currently supports "adam"
+  loss: "cross_entropy"  # Use cross-entropy loss
+  device: "cuda"         # Use "cuda" if available, else "cpu"
+
+# Data settings: where to load the preprocessed data (EEG epochs)
+data:
+  preprocessed_data_file: "./outputs/preprocessed_data.pkl"
+  # The preprocessed_data.pkl is assumed to contain a dict:
+  #   { subject: { "0train": epochs, "1test": epochs } }
+
+# (Optional) Logging and saving settings
+logging:
+  model_save_dir: "./trained_models"
+  results_save_path: "./trained_models/training_results.pkl"
+
+evaluators:
+  quantitative:
+    metrics:
+      - "accuracy"
+      - "kappa"
+      - "confusion_matrix"
+      - "roc_curve"        
+    n_runs_aggregation: true   # Whether to aggregate metrics over runs
+  qualitative:
+    visualizations:
+      - "tsne"
+      - "pca"
+    pca_n_components: 3
+    tsne:
+      perplexity: 30
+      n_iter: 1000
+    output_dir: "./evaluation_plots"
