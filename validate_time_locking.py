@@ -3,7 +3,7 @@ import pickle
 import numpy as np
 
 def main():
-    filename = "./outputs/2025-03-12/11-39-55/outputs/preprocessed_data.pkl"  # adjust the path as needed
+    filename = "outputs/22ica/22ica_features.pkl"  # adjust the path as needed
     print(f"Loading preprocessed data from {filename}...")
     with open(filename, "rb") as f:
         preprocessed_data = pickle.load(f)

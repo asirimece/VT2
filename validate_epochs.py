@@ -48,7 +48,7 @@ def plot_random_epochs(preprocessed_data, subject=1, session="0train", n_epochs=
 
 def main():
     # Path to your preprocessed data (adjust the path as needed)
-    filepath = "./outputs/2025-03-12/11-39-55/outputs/preprocessed_data.pkl"
+    filepath = "outputs/22ica/22ica_features.pkl"
     preprocessed_data = load_preprocessed_data(filepath)
     
     print("\n----- Validating Labeling -----")

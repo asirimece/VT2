@@ -7,17 +7,27 @@ sfreq: 250
 n_channels: 26
 eeg_channels: ['Fz', 'FC3', 'FC1', 'FCz', 'FC2', 'FC4', 'C5', 'C3', 'C1', 'Cz', 'C2', 'C4', 'C6', 'CP3', 'CP1', 'CPz', 'CP2', 'CP4', 'P1', 'Pz', 'P2', 'POz']
 eog_channels: ['EOG1', 'EOG2', 'EOG3']
+unify_annotations:
+  # GDF numeric codes:
+  "769": "left_hand"
+  "770": "right_hand"
+  "771": "feet"
+  "772": "tongue"
+  # synonyms:
+  "foot": "feet"
+  "left": "left_hand"
+  "hand_left": "left_hand"
+  "right": "right_hand"
+  "hand_right": "right_hand"
 event_markers:
   left_hand: 1
   right_hand: 2
-  both_feet: 3
+  feet: 3
   tongue: 4
-
-# Preprocessing steps 
 preprocessing:
   remove_eog_artifacts: true
   show_ica_plots: false     # if true, show interactive plots
-  save_ica_plots: true      # if true, save them to disk
+  save_ica_plots: false      # if true, save them to disk
   ica_plots_dir: "./ica_plots"
   raw_preprocessors:
     bandpass_filter:
@@ -28,10 +38,11 @@ preprocessing:
         notch_freq: 50
   epoching:
     kwargs:
-      window_length: 4.0
-      step_size: 0.5
-      tmin: -0.5
-      tmax: 3.5
+      tmin: 2.0         # start 500 ms before the cue
+      tmax: 6.0          # end 4.0 s after the cue (total epoch = 4.5 s)
+      crop_window_length: 2.0    # each sliding-window crop is 2.0 s long
+      crop_step_size: 0.5     # shift by 1 sample at 250 Hz (≈0.004 s)
+      baseline: null
   data_split:
     kwargs:
       train_session: "0train"
@@ -43,7 +54,7 @@ preprocessing:
 
 # (Other sections like model, training, experiment settings, etc.)
 model:
-  name: 'eeg_net'  # or 'deep4net', 'shallowfbcspnet'
+  name: 'deep4net'  # or 'deep4net', 'shallowfbcspnet'
   # model-specific hyperparameters...
 
 experiment:
@@ -52,6 +63,24 @@ experiment:
     - 'accuracy'
     - 'kappa'
     - 'confusion_matrix'
+
+clustering:
+  method: "kmeans"
+  kmeans:
+    n_clusters: 3
+    init: "k-means++"
+    max_iter: 300
+    n_init: 10
+    random_state: 42
+  hierarchical:
+    n_clusters: 3
+    linkage: "ward"
+    affinity: "euclidean"
+  dbscan:
+    eps: 1.0
+    min_samples: 5
+    metric: "euclidean"
+    leaf_size: 30
 
 tracker:
   wandb_project: 'bci_iv2a_project'

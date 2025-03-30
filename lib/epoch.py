@@ -1,122 +1,80 @@
-# epoch.py
 import numpy as np
 import mne
+from omegaconf import OmegaConf
 
+# NOT USED
 def extract_time_locked_epochs(raw, tmin, tmax):
-    """
-    Extracts time-locked epochs from raw data using annotations.
-    
-    Parameters
-    ----------
-    raw : mne.io.Raw
-        The raw EEG data with annotations.
-    tmin : float
-        Start time (in seconds) relative to each event.
-    tmax : float
-        End time (in seconds) relative to each event.
-        
-    Returns
-    -------
-    epochs : mne.Epochs
-        The time-locked epochs.
-    event_id : dict
-        Mapping from annotation description to event code.
-    """
+    # Ensure tmin and tmax are floats (resolve if coming from a config)
+    tmin = float(OmegaConf.to_container(tmin, resolve=True)) if hasattr(tmin, "keys") else float(tmin)
+    tmax = float(OmegaConf.to_container(tmax, resolve=True)) if hasattr(tmax, "keys") else float(tmax)
     events, event_id = mne.events_from_annotations(raw, verbose=False)
-    epochs = mne.Epochs(raw, events, event_id=event_id, tmin=tmin, tmax=tmax, preload=True, verbose=False)
+    epochs = mne.Epochs(raw, events, event_id=event_id,
+                        tmin=tmin, tmax=tmax,
+                        baseline=None, preload=True, verbose=False)
     return epochs, event_id
 
-def sliding_window_on_epoch(epoch_data, sfreq, window_length, step_size):
+def force_sliding_window_cropping(epochs, window_length, step_size):
     """
-    Splits a single epoch (n_channels x n_times) into overlapping sliding windows.
+    Takes an MNE Epochs object (macro epochs) and re-crops each trial into overlapping
+    sub-epochs of length window_length seconds, stepping every step_size seconds.
+    The second column of the event array is set to the original trial index.
+    """
+    sfreq = epochs.info['sfreq']
+    original_data = epochs.get_data()    # shape: (n_trials, n_channels, n_times)
+    original_events = epochs.events      # shape: (n_trials, 3)
     
-    Parameters
-    ----------
-    epoch_data : np.ndarray, shape (n_channels, n_times)
-        Data for one epoch.
-    sfreq : float
-        Sampling frequency.
-    window_length : float
-        Duration (in seconds) of each sliding window.
-    step_size : float
-        Time (in seconds) between consecutive windows.
-        
-    Returns
-    -------
-    windows : np.ndarray, shape (n_windows, n_channels, n_window_samples)
-        Array of sliding-window segments.
-    """
+    n_trials, n_channels, input_window_samples = original_data.shape
     window_samples = int(round(window_length * sfreq))
     step_samples = int(round(step_size * sfreq))
-    n_times = epoch_data.shape[1]
-    windows = []
-    for start in range(0, n_times - window_samples + 1, step_samples):
-        windows.append(epoch_data[:, start:start + window_samples])
-    return np.array(windows)
-
-def time_lock_and_slide_epochs(raw, tmin_event, tmax_event, window_length, step_size, preload=True, strategy='first'):
-    """
-    Combines time-locking (trial segmentation) and sliding-window cropping.
     
-    First, extracts time-locked epochs from the raw data (using annotations),
-    then subdivides each epoch into overlapping sub-epochs (crops) using a sliding window.
+    all_crops = []
+    all_events = []
+    sub_epoch_counter = 0  # Initialize the sub-epoch counter
     
-    Parameters
-    ----------
-    raw : mne.io.Raw
-        The raw EEG data.
-    tmin_event : float
-        Start time (in seconds) relative to each event (e.g., -0.5).
-    tmax_event : float
-        End time (in seconds) relative to each event (e.g., 3.5).
-    window_length : float
-        Duration (in seconds) of each sliding-window crop (e.g., 2.0).
-    step_size : float
-        Time (in seconds) between the start of consecutive crops (e.g., 0.01).
-    preload : bool
-        Whether to preload the epoch data into memory.
-    strategy : str
-        (Placeholder for multiple-event strategies; currently only 'first' is implemented.)
+    unique_labels = np.unique(original_events[:, 2])
+    subtract_one = (np.min(unique_labels) == 1 and np.max(unique_labels) == 4)
+    
+    for i in range(n_trials):
+        trial_data = original_data[i]  # shape: (n_channels, n_times)
+        raw_label  = original_events[i, 2]
+        label_zb = raw_label - 1 if subtract_one else raw_label
+        if label_zb < 0:
+            raise ValueError(f"Invalid label {label_zb} found. Original was {raw_label}.")
         
-    Returns
-    -------
-    new_epochs : mne.EpochsArray
-        An EpochsArray containing all the sliding-window crops from all trials.
-        Each sub-epoch’s label is inherited from its parent trial.
-    """
-    # Extract time-locked epochs using annotations
-    epochs, event_id = extract_time_locked_epochs(raw, tmin_event, tmax_event)
-    sfreq = epochs.info['sfreq']
-    
-    sub_epochs_list = []
-    new_labels = []
-    
-    # For each trial (epoch), create sliding-window crops
-    for i, epoch_data in enumerate(epochs.get_data()):
-        n_times = epoch_data.shape[1]
-        # Number of sub-epochs that fit in this trial
-        n_sub = (n_times - int(round(window_length * sfreq))) // int(round(step_size * sfreq)) + 1
+        n_sub = 1 + (input_window_samples - window_samples) // step_samples
         for j in range(n_sub):
-            start = j * int(round(step_size * sfreq))
-            sub_epoch = epoch_data[:, start:start + int(round(window_length * sfreq))]
-            sub_epochs_list.append(sub_epoch)
-            # Inherit the label from the parent trial
-            new_labels.append(epochs.events[i, 2])
+            start = j * step_samples
+            end   = start + window_samples
+            crop_data = trial_data[:, start:end]
+            all_crops.append(crop_data)
+            # Use 'i' (the current trial index) as the trial ID
+            evt_row = [sub_epoch_counter, i, label_zb]
+            all_events.append(evt_row)
+            sub_epoch_counter += 1
     
-    # Convert list to a NumPy array: shape (total_sub_epochs, n_channels, n_samples)
-    sub_epochs_array = np.array(sub_epochs_list)
+    all_crops = np.array(all_crops)       # shape: (total_subepochs, n_channels, window_samples)
+    all_events = np.array(all_events, int) # shape: (total_subepochs, 3)
     
-    # Create a new events array for the sub-epochs.
-    n_sub_epochs = sub_epochs_array.shape[0]
-    new_events = np.zeros((n_sub_epochs, 3), dtype=int)
-    for i in range(n_sub_epochs):
-        # The sample index is arbitrary here; tmin is set to 0.
-        new_events[i, 0] = i * int(round(window_length * sfreq))
-        new_events[i, 2] = new_labels[i]
-    
-    # Copy the info from the original epochs (do not modify nchan manually)
     new_info = epochs.info.copy()
+    new_tmin = 0.0  # Each sub-epoch now starts at 0 seconds relative to its crop
+    new_epochs = mne.EpochsArray(
+        data=all_crops,
+        info=new_info,
+        events=all_events,
+        tmin=new_tmin,
+        baseline=None,
+        verbose=False
+    )
+    print("[DEBUG] Unique sub-epoch labels (should match macro labels):", np.unique(all_events[:, 2]))
+    print("[DEBUG] Total number of sub-epochs:", all_crops.shape[0])
     
-    # Create a new EpochsArray from the sub-epoch data.
-    new_epochs = mne.EpochsArray(sub_epochs_array, new_info, events=new_events, tmin=0, verbose=False)
+    # New debug lines:
+    print("[DEBUG] First 10 lines of new_epochs.events:")
+    print(new_epochs.events[:10])
+    
+    return new_epochs
+
+def time_lock_and_slide_epochs(raw, tmin, tmax, window_length, step_size):
+    epochs, event_id = extract_time_locked_epochs(raw, tmin, tmax)
+    new_epochs = force_sliding_window_cropping(epochs, window_length, step_size)
     return new_epochs

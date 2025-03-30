@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import hydra
 from omegaconf import DictConfig, OmegaConf
 from lib.steps import run_pipeline, save_features
@@ -7,10 +8,10 @@ def main(cfg: DictConfig):
     print("Loaded configuration:")
     print(OmegaConf.to_yaml(cfg))
     
-    # Run the full pipeline: preprocessing -> feature extraction
+    # Run the full pipeline. The preprocessed_data.pkl already contains sub-epoching.
     features = run_pipeline(cfg)
     
-    # Optionally, save the extracted features for later stages (e.g., clustering, classification)
+    # Save the extracted features for later stages (e.g., clustering or classification)
     out_file = cfg.get("features_output", "./features.pkl")
     save_features(features, cfg, filename=out_file)
     
