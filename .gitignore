@@ -1590,3 +1590,9 @@ lib/__pycache__/preprocessors.cpython-312.pyc
 lib/__pycache__/steps.cpython-312.pyc
 lib/utils/__pycache__/utils.cpython-312.pyc
 mu_beta_plots/mu_beta_power_by_class.png
+lib/cluster/__pycache__/cluster.cpython-312.pyc
+lib/cluster/__pycache__/methods.cpython-312.pyc
+lib/base/__pycache__/train.cpython-312.pyc
+lib/base/__pycache__/trainer.cpython-312.pyc
+lib/mtl/__pycache__/model.cpython-312.pyc
+lib/mtl/__pycache__/trainer.cpython-312.pyc

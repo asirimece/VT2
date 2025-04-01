@@ -14,4 +14,4 @@ n_filters_time: 25
 n_filters_spat: 25
 filter_time_length: 10
 pool_time_length: 3
-pool_mode: "mean" # mean or max
+pool_mode: "max" # mean or max

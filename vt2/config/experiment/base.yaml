@@ -3,11 +3,11 @@
 # and set training hyperparameters.
 
 experiment:
-  mode: "single"         # Options: "single" or "pooled"
+  mode: "pooled"         # Options: "single" or "pooled"
   n_runs: 5              # Number of runs for repeated experiments
   epochs: 200             # Number of training epochs
-  batch_size: 32
-  learning_rate: 0.001
+  batch_size: 64
+  learning_rate: 0.0005
   optimizer: "adam"      
   loss: "cross_entropy"  
   device: "cuda"

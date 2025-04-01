@@ -9,7 +9,7 @@ This script is specialized solely for evaluation.
 import pickle
 from omegaconf import OmegaConf
 from lib.evaluate.evaluate import Evaluator
-from lib.train.train import Trainer, TrainingResults
+from lib.base.trainer import Trainer, TrainingResults
 
 def main():
     # Instantiate the Trainer and run training.

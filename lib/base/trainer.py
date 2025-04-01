@@ -58,7 +58,7 @@ class Trainer:
         print(OmegaConf.to_yaml(self.model_cfg))
         
         self.train_cfg = self.base_cfg.experiment
-        self.mode = self.train_cfg.get("mode", "single").lower()  # "single" or "pooled"
+        self.mode = self.train_cfg.get("mode", "pooled").lower()  # "single" or "pooled"
         self.device = self.train_cfg.device
         self.results_save_path = self.base_cfg.logging.results_save_path
 
@@ -227,16 +227,19 @@ class Trainer:
             # Pool training and test data across subjects.
             X_train_pool, y_train_pool, tid_train_pool = [], [], []
             X_test_pool, y_test_pool, tid_test_pool = [], [], []
-            for subj in sorted(self.preprocessed_data.keys()):
+            # Use enumeration to generate a unique offset for each subject.
+            for subj_index, subj in enumerate(sorted(self.preprocessed_data.keys())):
                 subject_data = self.preprocessed_data[subj]
                 train_ep = subject_data["0train"]
                 test_ep  = subject_data["1test"]
+                # Add an offset to trial IDs to make them globally unique.
+                offset = subj_index * 2000  # Assumes each subject has fewer than 2000 trials.
                 X_train_pool.append(train_ep.get_data())
                 y_train_pool.append(train_ep.events[:, -1])
-                tid_train_pool.append(train_ep.events[:, 1])
+                tid_train_pool.append(train_ep.events[:, 1] + offset)
                 X_test_pool.append(test_ep.get_data())
                 y_test_pool.append(test_ep.events[:, -1])
-                tid_test_pool.append(test_ep.events[:, 1])
+                tid_test_pool.append(test_ep.events[:, 1] + offset)
             X_train_pool = np.concatenate(X_train_pool, axis=0)
             y_train_pool = np.concatenate(y_train_pool, axis=0)
             tid_train_pool = np.concatenate(tid_train_pool, axis=0)

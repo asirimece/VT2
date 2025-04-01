@@ -23,6 +23,11 @@ class ClusterWrapper:
         """Return the cluster label for the given subject ID."""
         return self.labels.get(subject_id, None)
 
+    def get_num_clusters(self):
+        """Return the number of unique clusters."""
+        unique = np.unique(list(self.labels.values()))
+        return len(unique)
+    
     def summary(self):
         """Return a summary string describing the cluster distribution."""
         unique, counts = np.unique(list(self.labels.values()), return_counts=True)
@@ -76,8 +81,8 @@ class SubjectClusterer:
             raise ValueError(f"Unknown clustering method: {method}")
 
         cluster_labels = {subj: label for subj, label in zip(subject_ids, labels)}
-        # Instead of writing to disk, wrap the results in a ClusterResult instance and return it.
-        return ClusterResult(subject_ids, cluster_labels, model, self.subject_representations)
+        # Instead of writing to disk, wrap the results in a ClusterWrapper instance and return it.
+        return ClusterWrapper(subject_ids, cluster_labels, model, self.subject_representations)
 
 # Example usage within your pipeline:
 if __name__ == "__main__":
