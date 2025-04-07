@@ -177,7 +177,7 @@ def aggregate_data(features, session):
     
 def main():
     from omegaconf import OmegaConf
-    cfg = OmegaConf.load("vt2/config/config.yaml")
+    cfg = OmegaConf.load("config/config.yaml")
     features = run_pipeline(cfg)
     save_features(features, cfg)
     # (Further stages: clustering, classification, etc.)

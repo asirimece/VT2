@@ -26,24 +26,24 @@ class Deep4NetModel:
         if isinstance(self.cfg, dict):
             in_chans = self.cfg.get("in_chans", 22)
             n_classes = self.cfg.get("n_classes", 4)
-            input_window_samples = self.cfg.get("input_window_samples", 1000)
+            n_times = self.cfg.get("n_times", 1000)
             final_conv_length = self.cfg.get("final_conv_length", "auto")
         else:
             in_chans = self.cfg.in_chans
             n_classes = self.cfg.n_classes
-            input_window_samples = self.cfg.input_window_samples
+            n_times = self.cfg.n_times
             final_conv_length = self.cfg.final_conv_length
         
         model = Deep4Net(
             in_chans,
             n_classes,
-            input_window_samples,
+            n_times,
             final_conv_length=final_conv_length
         )
         print("Deep4Net model constructed with the following parameters:")
         print(f"  in_chans: {in_chans}")
         print(f"  n_classes: {n_classes}")
-        print(f"  input_window_samples: {input_window_samples}")
+        print(f"  n_times: {n_times}")
         print(f"  final_conv_length: {final_conv_length}")
         return model
     
@@ -82,25 +82,25 @@ def build_deep4net_model(cfg):
     if isinstance(cfg, dict):
         in_chans = cfg.get("in_chans", 22)
         n_classes = cfg.get("n_classes", 4)
-        input_window_samples = cfg.get("input_window_samples", 1000)
+        n_times = cfg.get("n_times", 1000)
         final_conv_length = cfg.get("final_conv_length", "auto")
     else:
         in_chans = cfg.in_chans
         n_classes = cfg.n_classes
-        input_window_samples = cfg.input_window_samples
+        n_times = cfg.n_times
         final_conv_length = cfg.final_conv_length
 
     model = Deep4Net(
         in_chans,
         n_classes,
-        input_window_samples,
+        n_times,
         final_conv_length=final_conv_length
     )
 
     print("Deep4Net model constructed with the following parameters:")
     print(f"  in_chans: {in_chans}")
     print(f"  n_classes: {n_classes}")
-    print(f"  input_window_samples: {input_window_samples}")
+    print(f"  n_times: {n_times}")
     print(f"  final_conv_length: {final_conv_length}")
     
     return model

@@ -19,12 +19,12 @@ class MultiTaskDeep4Net(nn.Module):
         super(MultiTaskDeep4Net, self).__init__()
         # Make a copy of backbone_kwargs so we can modify it.
         backbone_kwargs = backbone_kwargs.copy() if backbone_kwargs is not None else {}
-        # Pop input_window_samples so it isn't passed twice.
-        window_samples = backbone_kwargs.pop("input_window_samples", 500)
+        # Pop n_times so it isn't passed twice.
+        window_samples = backbone_kwargs.pop("n_times", 500)
         self.shared_backbone = Deep4Net(
             n_chans=n_chans,
             n_outputs=n_outputs,
-            input_window_samples=window_samples,
+            n_times=window_samples,
             final_conv_length="auto",
             **backbone_kwargs
         )

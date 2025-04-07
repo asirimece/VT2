@@ -23,7 +23,7 @@ def force_sliding_window_cropping(epochs, window_length, step_size):
     original_data = epochs.get_data()    # shape: (n_trials, n_channels, n_times)
     original_events = epochs.events      # shape: (n_trials, 3)
     
-    n_trials, n_channels, input_window_samples = original_data.shape
+    n_trials, n_channels, n_times = original_data.shape
     window_samples = int(round(window_length * sfreq))
     step_samples = int(round(step_size * sfreq))
     
@@ -41,7 +41,7 @@ def force_sliding_window_cropping(epochs, window_length, step_size):
         if label_zb < 0:
             raise ValueError(f"Invalid label {label_zb} found. Original was {raw_label}.")
         
-        n_sub = 1 + (input_window_samples - window_samples) // step_samples
+        n_sub = 1 + (n_times - window_samples) // step_samples
         for j in range(n_sub):
             start = j * step_samples
             end   = start + window_samples

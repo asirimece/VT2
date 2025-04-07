@@ -4,7 +4,7 @@ trainer.py
 
 Defines a Trainer class that loads configuration and preprocessed data,
 trains Deep4Net subject-by-subject (in "single" mode) or pooled across subjects (in "pooled" mode),
-aggregates trial-level predictions, wraps the results in a TrainingResults object,
+aggregates trial-level predictions, wraps the results in a BaseWrapper object,
 and saves these results to a file.
 These results are then used by the evaluator.
 Usage:
@@ -30,7 +30,7 @@ from lib.evaluate.evaluate import Evaluator
 from omegaconf import OmegaConf
 
 
-class TrainingResults:
+class BaseWrapper:
     """
     A simple container for wrapping training results.
     """
@@ -47,8 +47,8 @@ class TrainingResults:
 
 
 class Trainer:
-    def __init__(self, base_cfg_path="vt2/config/experiment/base.yaml",
-                       model_cfg_path="vt2/config/model/deep4net.yaml"):
+    def __init__(self, base_cfg_path="config/experiment/base.yaml",
+                       model_cfg_path="config/model/deep4net.yaml"):
         # Load configuration files using Hydra (OmegaConf)
         self.base_cfg = OmegaConf.load(base_cfg_path)
         self.model_cfg = OmegaConf.load(model_cfg_path)
@@ -217,7 +217,7 @@ class Trainer:
         Trains the model either in "single" (subject-level) mode or "pooled" mode.
         In "single" mode, each subject is trained separately.
         In "pooled" mode, data from all subjects are concatenated and a single model is trained.
-        Returns a TrainingResults object.
+        Returns a BaseWrapper object.
         """
         results_all_subjects = {}
         mode = self.mode
@@ -265,7 +265,7 @@ class Trainer:
                 results_all_subjects[subj] = trial_results
                 print(f"[DEBUG] Subject {subj} training complete.")
         
-        training_results = TrainingResults(results_all_subjects)
+        training_results = BaseWrapper(results_all_subjects)
         
         # Save the training results using the configured path.
         os.makedirs(os.path.dirname(self.results_save_path), exist_ok=True)
@@ -723,7 +723,7 @@ def main():
     model_cfg = {
         "in_chans": 22,
         "n_classes": 4,
-        "input_window_samples": 500,  # 2 s at 250 Hz
+        "n_times": 500,  # 2 s at 250 Hz
         "final_conv_length": "auto"
     }
     train_cfg = {

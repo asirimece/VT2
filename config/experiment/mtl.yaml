@@ -1,0 +1,58 @@
+experiment:
+  preprocessed_file: "outputs/preprocessed_data.pkl"
+  features_file: "outputs/2025-03-28/both_ems/features___.pkl"
+  
+  clustering:
+    method: "kmeans"
+    kmeans:
+      n_clusters: 3
+      init: "k-means++"
+      max_iter: 300
+      n_init: 10
+      random_state: 42
+    #hierarchical:
+      #n_clusters: 3
+      #linkage: "ward"
+      #affinity: "euclidean"
+    #dbscan:
+      #eps: 1.0
+      #min_samples: 5
+      #metric: "euclidean"
+      #leaf_size: 30
+
+  mtl:
+    backbone:
+      n_times: 500
+      drop_prob: 0.25
+      n_filters_time: 25
+      n_filters_spat: 25
+      filter_time_length: 10
+      pool_time_length: 3
+      pool_mode: "max"
+
+    model:
+      n_outputs: 4
+    training:
+      num_epochs: 100
+      batch_size: 64
+      learning_rate: 0.005
+      optimizer: "adam"
+      loss: "cross_entropy"
+
+  evaluators:
+    quantitative:
+      metrics:
+        - "accuracy"
+        - "kappa"
+        - "confusion_matrix"
+        - "roc_curve"
+      n_runs_aggregation: true
+    qualitative:
+      visualizations:
+        - "tsne"
+        - "pca"
+      pca_n_components: 3
+      tsne:
+        perplexity: 30
+        n_iter: 1000
+      output_dir: "./evaluation_plots"

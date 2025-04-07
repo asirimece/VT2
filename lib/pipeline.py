@@ -139,7 +139,7 @@ def run_preprocessing_pipeline(cfg,
     )"""
     
 if __name__ == "__main__":
-    cfg = OmegaConf.load("vt2/config/config.yaml")
+    cfg = OmegaConf.load("config/config.yaml")
     _ = run_preprocessing_pipeline(cfg)
     
 

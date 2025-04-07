@@ -137,7 +137,7 @@ def data_split_concatenate(subj_data, train_session="0train", test_session="1tes
 
 def exponential_moving_standardization(epochs, smoothing_factor=0.1, eps=1e-5):
     data = epochs.get_data()
-    n_epochs, n_channels, input_window_samples = data.shape
+    n_epochs, n_channels, n_times = data.shape
     standardized_data = np.zeros_like(data)
     
     for ep in range(n_epochs):

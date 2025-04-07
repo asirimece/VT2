@@ -3,7 +3,7 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 from lib.steps import run_pipeline, save_features
 
-@hydra.main(config_path="../vt2/config", config_name="config")
+@hydra.main(config_path="../config", config_name="config")
 def main(cfg: DictConfig):
     print("Loaded configuration:")
     print(OmegaConf.to_yaml(cfg))

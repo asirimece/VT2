@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report, ConfusionMatrixDisplay
-from lib.base.trainer import TrainingResults
+from lib.base.trainer import BaseWrapper
 import pprint
 
 # Load the training results

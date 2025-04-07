@@ -9,15 +9,15 @@ This script is specialized solely for evaluation.
 import pickle
 from omegaconf import OmegaConf
 from lib.evaluate.evaluate import Evaluator
-from lib.base.trainer import Trainer, TrainingResults
+from lib.base.trainer import Trainer, BaseWrapper
 
 def main():
     # Instantiate the Trainer and run training.
     trainer = Trainer()
-    training_results = trainer.run()  # This returns a TrainingResults object.
+    training_results = trainer.run()  # This returns a BaseWrapper object.
     
     # Load evaluation configuration.
-    eval_cfg = OmegaConf.load("vt2/config/experiment/base.yaml")
+    eval_cfg = OmegaConf.load("config/experiment/base.yaml")
     evaluator = Evaluator(eval_cfg.evaluators)
     
     #with open("trained_models/training_results.pkl", "rb") as f:

@@ -4,7 +4,58 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
 from lib.mtl.model import MultiTaskDeep4Net
+import pickle
 
+
+class MTLWrapper:
+    """
+    A container for wrapping MTL training results.
+    
+    Attributes:
+      results_by_subject (dict): Maps subject IDs (or "pooled") to a dict containing:
+            "ground_truth": array-like of true labels,
+            "predictions": array-like of predicted labels.
+      training_logs (dict): Training logs such as per-epoch loss/accuracy.
+      cluster_assignments (dict): Mapping from subject IDs to cluster labels.
+      additional_info (dict): Any additional metadata (e.g., hyperparameters).
+    """
+    def __init__(self, results_by_subject, training_logs=None, cluster_assignments=None, additional_info=None):
+        self.results_by_subject = results_by_subject
+        self.training_logs = training_logs if training_logs is not None else {}
+        self.cluster_assignments = cluster_assignments if cluster_assignments is not None else {}
+        self.additional_info = additional_info if additional_info is not None else {}
+    
+    def get_subject_results(self, subject):
+        return self.results_by_subject.get(subject)
+    
+    def save(self, filename):
+        with open(filename, "wb") as f:
+            pickle.dump(self, f)
+        print(f"MTL results saved to {filename}")
+    
+    @classmethod
+    def load(cls, filename):
+        with open(filename, "rb") as f:
+            obj = pickle.load(f)
+        # If already an instance of MTLWrapper, return it.
+        if isinstance(obj, cls):
+            return obj
+        # If it's a dict with the keys "ground_truth" and "predictions", then wrap it.
+        if isinstance(obj, dict) and ("ground_truth" in obj and "predictions" in obj):
+            wrapped = {"pooled": obj}
+            print("[DEBUG] Loaded results as dict with keys ['ground_truth', 'predictions']. Wrapping under key 'pooled'.")
+            return cls(results_by_subject=wrapped)
+        # Otherwise, if it's a dict (assumed to be mapping subject IDs to results), wrap it.
+        if isinstance(obj, dict):
+            return cls(results_by_subject=obj)
+        # If it's a list, wrap it as pooled.
+        if isinstance(obj, list):
+            wrapped = {"pooled": obj}
+            return cls(results_by_subject=wrapped)
+        return obj
+
+
+    
 class EEGMultiTaskDataset(Dataset):
     def __init__(self, data, labels, subject_ids, cluster_wrapper):
         """
@@ -29,7 +80,7 @@ class EEGMultiTaskDataset(Dataset):
         label = self.labels[index]
         subject_id = self.subject_ids[index]
         cluster_id = self.cluster_wrapper.get_cluster_for_subject(subject_id)
-        return sample, label, cluster_id
+        return sample, label, subject_id, cluster_id
 
 def train_mtl_model(model, dataloader, criterion, optimizer, device, num_epochs=100):
     model.to(device)
@@ -38,7 +89,8 @@ def train_mtl_model(model, dataloader, criterion, optimizer, device, num_epochs=
         epoch_loss = 0.0
         total_correct = 0
         total_samples = 0
-        for data, labels, cluster_ids in dataloader:
+        # Unpack four values now: data, labels, subject_ids, cluster_ids
+        for data, labels, subject_ids, cluster_ids in dataloader:
             data = data.to(device, dtype=torch.float)
             labels = labels.to(device, dtype=torch.long)
             if not torch.is_tensor(cluster_ids):
@@ -67,8 +119,9 @@ def evaluate_mtl_model(model, dataloader, device):
     total_samples = 0
     all_preds = []
     all_labels = []
+    all_subjects = []   # new list to capture subject ids
     with torch.no_grad():
-        for data, labels, cluster_ids in dataloader:
+        for data, labels, subject_ids, cluster_ids in dataloader:
             data = data.to(device, dtype=torch.float)
             labels = labels.to(device, dtype=torch.long)
             if not torch.is_tensor(cluster_ids):
@@ -80,6 +133,9 @@ def evaluate_mtl_model(model, dataloader, device):
             total_samples += data.size(0)
             all_preds.extend(preds.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
+            all_subjects.extend(subject_ids)  # record subject id for each sample
     accuracy = total_correct / total_samples
     print(f"Evaluation Accuracy: {accuracy:.4f}")
-    return all_labels, all_preds
+    return all_subjects, all_labels, all_preds
+
+

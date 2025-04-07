@@ -2,9 +2,9 @@
 mode: "online"
 slack: True
 
-experiment_project: mt_augmentation
-run_project: mt_augmentation_runs
-entity: 'weissman'
+experiment_project: vt2_bci_iv2a_TL
+run_project: vt2_bci_iv2a_TL_runs
+entity: 'asirimece'
 
 environment: "prod"
 

@@ -1,5 +1,3 @@
-# run_mtl.py
-
 import torch
 from torch.utils.data import DataLoader
 from lib.mtl.trainer import EEGMultiTaskDataset, train_mtl_model, evaluate_mtl_model
@@ -10,8 +8,9 @@ import numpy as np
 import pickle
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
-
-
+from lib.mtl.trainer import MTLWrapper  # MTLWrapper class from your multitask_trainer.py
+from lib.mtl.evaluate import MTLEvaluator   # Your evaluator module
+from lib.mtl.utils import convert_state_dict_keys
 
 def load_preprocessed_data(preprocessed_file="outputs/preprocessed_data.pkl"):
     with open(preprocessed_file, "rb") as f:
@@ -32,7 +31,7 @@ def load_preprocessed_data(preprocessed_file="outputs/preprocessed_data.pkl"):
     y = np.concatenate(labels_list, axis=0)
     return X, y, subject_ids_list
 
-def load_cluster_wrapper(config_path="vt2/config/dataset/bci_iv2a.yaml", features_file="outputs/2025-03-28/both_ems/features___.pkl"):
+def load_cluster_wrapper(config_path="config/dataset/bci_iv2a.yaml", features_file="outputs/2025-03-28/both_ems/features___.pkl"):
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
     clustering_config = config.get('clustering', {})
@@ -41,7 +40,7 @@ def load_cluster_wrapper(config_path="vt2/config/dataset/bci_iv2a.yaml", feature
     return cluster_wrapper
 
 def plot_cluster_distribution(cluster_wrapper, output_file="cluster_distribution.png"):
-    assignments = cluster_wrapper.labels  # dict: subject_id -> cluster label (or dict)
+    assignments = cluster_wrapper.labels  # dict: subject_id -> cluster label
     cleaned_labels = []
     for value in assignments.values():
         if isinstance(value, dict):
@@ -73,6 +72,7 @@ def plot_subject_scatter(cluster_wrapper, output_file="subject_scatter.png"):
             numeric_labels.append(-1)
     labels = np.array(numeric_labels)
     
+    from sklearn.decomposition import PCA
     pca = PCA(n_components=2)
     X_reduced = pca.fit_transform(X)
     plt.figure(figsize=(8,6))
@@ -97,14 +97,15 @@ def main():
     plot_subject_scatter(cluster_wrapper, output_file="subject_scatter.png")
     
     # Create dataset and dataloader.
-    from lib.mtl.trainer import EEGMultiTaskDataset 
+    # Note: EEGMultiTaskDataset now returns (sample, label, subject_id, cluster_id)
     dataset = EEGMultiTaskDataset(data, labels, subject_ids, cluster_wrapper)
-    dataloader = DataLoader(dataset, batch_size=64, shuffle=True)
+    # Use shuffle=False for evaluation so subject_ids remain in order.
+    dataloader = DataLoader(dataset, batch_size=64, shuffle=False)
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    # Pass backbone_kwargs with input_window_samples.
-    backbone_kwargs = {"input_window_samples": data.shape[2]}  # data.shape[2] should be 500
+    # Pass backbone_kwargs with n_times.
+    backbone_kwargs = {"n_times": data.shape[2]}
     model = MultiTaskDeep4Net(n_chans=data.shape[1], n_outputs=4, n_clusters=n_clusters, backbone_kwargs=backbone_kwargs)
     
     import torch.optim as optim
@@ -115,13 +116,49 @@ def main():
     model = train_mtl_model(model, dataloader, criterion, optimizer, device, num_epochs=100)
     
     print("Evaluating MTL model...")
-    all_labels, all_preds = evaluate_mtl_model(model, dataloader, device)
+    # Run evaluation; our evaluate_mtl_model now returns subject_ids, ground truth, and predictions.
+    subjects, all_labels, all_preds = evaluate_mtl_model(model, dataloader, device)
     
-    # Save training results.
-    results_dict = {"ground_truth": all_labels, "predictions": all_preds}
-    with open("mtl_training_results.pkl", "wb") as f:
-        pickle.dump(results_dict, f)
-    print("MTL training results saved to mtl_training_results.pkl")
+    # ----------------------------
+    # Aggregate Subject-Level Results
+    # ----------------------------
+    subject_results = {}
+    for subj, gt, pred in zip(subjects, all_labels, all_preds):
+        if subj not in subject_results:
+            subject_results[subj] = {"ground_truth": [], "predictions": []}
+        subject_results[subj]["ground_truth"].append(gt)
+        subject_results[subj]["predictions"].append(pred)
     
+    # Use your cluster_wrapper to get cluster assignments (adjust if stored differently)
+    cluster_assignments = cluster_wrapper.labels
+    
+    # Create the MTLWrapper instance and save it.
+    mtl_wrapper = MTLWrapper(subject_results, cluster_assignments=cluster_assignments)
+    mtl_wrapper.save("mtl_wrapper_results.pkl")
+    print("MTLWrapper results saved to mtl_wrapper_results.pkl")
+    
+    # Save the entire MTL model
+    #torch.save(model, "pretrained_mtl_model.pth")
+    # Save only weights
+    # Convert the state dict keys to a consistent format and re-save the weights.
+    converted_state_dict = convert_state_dict_keys(model.state_dict())
+    torch.save(converted_state_dict, "pretrained_mtl_model_weights.pth")
+    print("MTL model weights saved to pretrained_mtl_model_weights.pth")
+    
+    # ----------------------------
+    # Integrate the Evaluator
+    # ----------------------------
+    # Load your baseline results (make sure training_results.pkl exists)
+    with open("./trained_models/training_results.pkl", "rb") as f:
+        baseline_results = pickle.load(f)
+    
+    # Load evaluation configuration from config/experiment/mtl.yaml
+    with open("config/experiment/mtl.yaml", "r") as f:
+        eval_config = yaml.safe_load(f)
+    
+    # Now pass the configuration as the third argument.
+    evaluator = MTLEvaluator(mtl_wrapper, baseline_results, eval_config)
+    evaluator.evaluate(verbose=True)
+
 if __name__ == "__main__":
     main()
