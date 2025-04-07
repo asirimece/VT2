@@ -5,13 +5,24 @@
 
 
 name: "deep4net"
+
 in_chans: 22 # Number of EEG channels (e.g., exclude EOG and stim)
 n_classes: 4  # Number of classes in your MI dataset
 n_times: 500  # Length of the input window (depends on your epoch length and sampling rate)
 final_conv_length: auto # Use 'auto' to let braindecode decide; or set an integer
-drop_prob: 0.25
-n_filters_time: 25
-n_filters_spat: 25
-filter_time_length: 10
-pool_time_length: 3
-pool_mode: "max" # mean or max
+
+single:
+  drop_prob: 0.25
+  n_filters_time: 25
+  n_filters_spat: 25
+  filter_time_length: 10
+  pool_time_length: 3
+  pool_mode: "max"  # mean or max
+
+pooled:
+  drop_prob: 0.25
+  n_filters_time: 25
+  n_filters_spat: 25
+  filter_time_length: 10
+  pool_time_length: 3
+  pool_mode: "max"  # mean or max

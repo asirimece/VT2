@@ -1,5 +1,4 @@
-# Allowed values for mode: online, offline, disabled
-mode: "online"
+mode: "online"  # online, offline, disabled
 slack: True
 
 experiment_project: vt2_bci_iv2a_TL

@@ -1,16 +1,23 @@
-# This config file orchestrates the baseline training.
-# You can choose the mode ("single" for subject‐by‐subject or "pooled" for all subjects pooled)
-# and set training hyperparameters.
-
 experiment:
-  mode: "pooled"         # Options: "single" or "pooled"
-  n_runs: 5              # Number of runs for repeated experiments
-  epochs: 200             # Number of training epochs
-  batch_size: 64
-  learning_rate: 0.0005
-  optimizer: "adam"      
-  loss: "cross_entropy"  
-  device: "cuda"
+  mode: "pooled"         # "single" or "pooled"
+
+  single:
+    n_runs: 5              
+    epochs: 200             
+    batch_size: 64
+    learning_rate: 0.0005
+    optimizer: "adam"      
+    loss: "cross_entropy"  
+    device: "cuda"
+
+  pooled:
+    n_runs: 5              
+    epochs: 200             
+    batch_size: 64
+    learning_rate: 0.0005
+    optimizer: "adam"      
+    loss: "cross_entropy"  
+    device: "cuda"
 
 data:
   preprocessed_data_file: "./outputs/preprocessed_data.pkl"

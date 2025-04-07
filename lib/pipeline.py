@@ -13,8 +13,8 @@ import mne
 from omegaconf import OmegaConf
 from moabb.datasets import BNCI2014001
 from lib.preprocessors import exponential_moving_standardization
-from lib.epoch import force_sliding_window_cropping
-from lib.dataset.events import unify_events
+from lib.transform.epoch import force_sliding_window_cropping
+#from lib.dataset.events import unify_events
 from lib.preprocessors import bandpass_filter, remove_eog_artifacts_ica, data_split_concatenate
 from lib.utils.utils import to_float
 
@@ -27,6 +27,7 @@ def time_lock_epochs(raw, tmin, tmax, unify_annot=None, event_markers=None):
     tmin_val = to_float(tmin, 2.0)
     tmax_val = to_float(tmax, 6.0)
     
+    """
     if unify_annot is not None and event_markers is not None:
         # Use our custom event unification:
         events, _ = mne.events_from_annotations(raw, verbose=False)
@@ -34,7 +35,9 @@ def time_lock_epochs(raw, tmin, tmax, unify_annot=None, event_markers=None):
         events, new_event_id = unify_events(raw, unify_annot, event_markers)
     else:
         events, new_event_id = mne.events_from_annotations(raw, verbose=False)
-
+    """
+    events, new_event_id = mne.events_from_annotations(raw, verbose=False)
+    
     epochs = mne.Epochs(
         raw, events, event_id=new_event_id,
         tmin=tmin_val, tmax=tmax_val,
@@ -221,7 +224,7 @@ def run_preprocessing_pipeline(config):
             raw.pick_types(eeg=True, stim=False, exclude=[])
             
             # Epoch with sliding window
-            from lib.epoch import time_lock_and_slide_epochs
+            lib.transform.epoch import time_lock_and_slide_epochs
             epochs = time_lock_and_slide_epochs(raw, tmin_event, tmax_event, window_length, step_size)
             print(f"  Created {len(epochs.events)} epochs from session {sess_label}")
             

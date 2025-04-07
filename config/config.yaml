@@ -1,9 +1,9 @@
 defaults:
   - dataset: bci_iv2a
+  - transform: transform
   - experiment: base
   - model: deep4net
   - hook: hook
-  - feature_extraction: feature_extraction
   - tracker: tracker
   - wandb: dev
   - _self_

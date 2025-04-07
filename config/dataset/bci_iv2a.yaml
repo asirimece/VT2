@@ -52,18 +52,6 @@ preprocessing:
       #apply_on: "training"
       smoothing_factor: 0.1
 
-# (Other sections like model, training, experiment settings, etc.)
-model:
-  name: 'deep4net'  # or 'deep4net', 'shallowfbcspnet'
-  # model-specific hyperparameters...
-
-experiment:
-  n_runs: 10
-  evaluation_metrics:
-    - 'accuracy'
-    - 'kappa'
-    - 'confusion_matrix'
-
 tracker:
   wandb_project: 'bci_iv2a_project'
   wandb_mode: 'online'

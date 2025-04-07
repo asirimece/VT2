@@ -1,6 +1,4 @@
-#!/usr/bin/env python
-# data_loader.py
-
+from omegaconf import OmegaConf
 import pickle
 from torch.utils.data import ConcatDataset, DataLoader
 from lib.dataset.dataset import EEGDataset

@@ -1,21 +1,18 @@
-#!/usr/bin/env python
 import hydra
-from omegaconf import DictConfig, OmegaConf
-from lib.steps import run_pipeline, save_features
+from omegaconf import DictConfig
+from src import base
+from src import transfer
 
-@hydra.main(config_path="../config", config_name="config")
-def main(cfg: DictConfig):
-    print("Loaded configuration:")
-    print(OmegaConf.to_yaml(cfg))
-    
-    # Run the full pipeline. The preprocessed_data.pkl already contains sub-epoching.
-    features = run_pipeline(cfg)
-    
-    # Save the extracted features for later stages (e.g., clustering or classification)
-    out_file = cfg.get("features_output", "./features.pkl")
-    save_features(features, cfg, filename=out_file)
-    
-    print("Pipeline complete.")
+@hydra.main(config_path="../config", config_name="config", version_base=None)
+def main(config: DictConfig):
+    experiment_type = config.experiment.name
+
+    if experiment_type == "base":
+        base.run(config)
+    elif experiment_type == "transfer":
+        transfer.run(config)
+    else:
+        raise ValueError(f"Unknown experiment type: {experiment_type}")
 
 if __name__ == "__main__":
     main()

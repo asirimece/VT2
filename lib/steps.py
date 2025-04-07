@@ -4,7 +4,7 @@ import pickle
 import numpy as np
 
 from lib.pipeline import run_preprocessing_pipeline, save_preprocessed_data
-from lib.feature_extraction import run_feature_extraction
+from lib.extract import run_feature_extraction
 from lib.mtl.cluster import compute_subject_level_representation, subject_level_clustering
 from sklearn.preprocessing import StandardScaler
 #from sklearn.decomposition import PCA
