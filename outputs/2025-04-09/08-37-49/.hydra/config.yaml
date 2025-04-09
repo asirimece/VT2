@@ -1,0 +1,226 @@
+dataset:
+  name: BCI_IV2a
+  home: ./data/BCI_IV2a
+  dataset: BNCI2014_001
+  n_subjects: 9
+  subjects:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  sfreq: 250
+  n_channels: 26
+  eeg_channels:
+  - Fz
+  - FC3
+  - FC1
+  - FCz
+  - FC2
+  - FC4
+  - C5
+  - C3
+  - C1
+  - Cz
+  - C2
+  - C4
+  - C6
+  - CP3
+  - CP1
+  - CPz
+  - CP2
+  - CP4
+  - P1
+  - Pz
+  - P2
+  - POz
+  eog_channels:
+  - EOG1
+  - EOG2
+  - EOG3
+  unify_annotations:
+    '769': left_hand
+    '770': right_hand
+    '771': feet
+    '772': tongue
+    foot: feet
+    left: left_hand
+    hand_left: left_hand
+    right: right_hand
+    hand_right: right_hand
+  event_markers:
+    left_hand: 1
+    right_hand: 2
+    feet: 3
+    tongue: 4
+  preprocessing:
+    remove_eog_artifacts: true
+    show_ica_plots: false
+    save_ica_plots: false
+    ica_plots_dir: ./ica_plots
+    raw_preprocessors:
+      bandpass_filter:
+        kwargs:
+          low: 4
+          high: 38
+          method: iir
+          notch_freq: 50
+    epoching:
+      kwargs:
+        tmin: 2.0
+        tmax: 6.0
+        crop_window_length: 2.0
+        crop_step_size: 0.5
+        baseline: null
+    data_split:
+      kwargs:
+        train_session: 0train
+        test_session: 1test
+    exponential_moving_standardization:
+      kwargs:
+        smoothing_factor: 0.1
+    output_file: ./outputs/preprocessed_data.pkl
+  tracker:
+    wandb_project: bci_iv2a_project
+    wandb_mode: online
+transform:
+  feature_extraction:
+    methods:
+    - name: fbcsp
+      kwargs:
+        frequency_bands:
+        - - 4
+          - 8
+        - - 8
+          - 12
+        - - 12
+          - 16
+        - - 16
+          - 20
+        - - 20
+          - 24
+        - - 24
+          - 28
+        - - 28
+          - 32
+        - - 32
+          - 38
+        n_components_per_band: 2
+    - name: riemannian
+      kwargs:
+        estimator: oas
+        mapping: tangent
+    feature_selection:
+      name: rfecv
+      kwargs:
+        step: 1
+        cv: 5
+        scoring: accuracy
+        min_features_to_select: 1
+        param_grid:
+          estimator__C:
+          - 0.1
+          - 1.0
+          - 10.0
+experiment:
+  experiment:
+    mode: pooled
+    single:
+      n_runs: 5
+      epochs: 200
+      batch_size: 64
+      learning_rate: 0.0005
+      optimizer: adam
+      loss: cross_entropy
+      device: cuda
+    pooled:
+      n_runs: 5
+      epochs: 200
+      batch_size: 64
+      learning_rate: 0.0005
+      optimizer: adam
+      loss: cross_entropy
+      device: cuda
+  data:
+    preprocessed_data_file: ./outputs/preprocessed_data.pkl
+  logging:
+    model_save_dir: ./trained_models
+    results_save_path: ./trained_models/training_results.pkl
+  evaluators:
+    quantitative:
+      metrics:
+      - accuracy
+      - kappa
+      - confusion_matrix
+      - roc_curve
+      n_runs_aggregation: true
+    qualitative:
+      visualizations:
+      - tsne
+      - pca
+      pca_n_components: 3
+      tsne:
+        perplexity: 30
+        n_iter: 1000
+      output_dir: ./evaluation_plots
+model:
+  name: deep4net
+  in_chans: 22
+  n_classes: 4
+  n_times: 500
+  final_conv_length: auto
+  single:
+    drop_prob: 0.25
+    n_filters_time: 25
+    n_filters_spat: 25
+    filter_time_length: 10
+    pool_time_length: 3
+    pool_mode: max
+  pooled:
+    drop_prob: 0.25
+    n_filters_time: 25
+    n_filters_spat: 25
+    filter_time_length: 10
+    pool_time_length: 3
+    pool_mode: max
+hook:
+  model_saver:
+    name: model_saver
+  tracker:
+    name: tracker
+    trackers:
+    - ${tracker.experiment_tracker}
+    - ${tracker.run_tracker}
+tracker:
+  experiment_tracker:
+    name: wandb_experiment_tracker
+    type: wandb
+    enabled: true
+    mode: online
+    target: experiment
+    project: ${wandb.experiment_project}
+    kwargs: {}
+    args: []
+  run_tracker:
+    name: wandb_run_tracker
+    type: wandb
+    enabled: true
+    mode: online
+    target: run
+    project: ${wandb.run_project}
+    kwargs: {}
+    args: []
+wandb:
+  mode: disabled
+  slack: false
+  experiment_project: vt2_bci_iv2a_TL
+  run_project: vt2_bci_iv2a_TL_runs
+  entity: asirimece
+  environment: test
+  tags:
+  - Test
+seed: 1
