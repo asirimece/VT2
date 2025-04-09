@@ -1,32 +1,43 @@
-# run_base.py
+"""
+Pipeline steps:
+1. Preprocessing:
+   - Run the preprocessing pipeline (filtering, ICA, epoching, sliding-window cropping, etc.)
+   - Save the resulting preprocessed data to disk (path defined in config.data.preprocessed_data_file)
+2. Baseline Model Training:
+   - Instantiate the Trainer (which internally handles both single and pooled modes via config.experiment.mode)
+   - Train the Deep4Net model on the preprocessed data
 
-from src.preprocessing.preprocessing_pipeline import PreprocessingPipeline
-from src.features.feature_extractor import FeatureExtractionPipeline
-from src.base.baseline_trainer import BaselineTrainer
+This module provides a run(config: DictConfig) function to be invoked from your main entry point.
+"""
 
-def run(config):
-    """
-    High-level function that orchestrates the entire baseline training pipeline
-    (for both single-subject and pooled modes). The steps are:
+from lib.logging import logger
+from omegaconf import DictConfig, OmegaConf
+from lib.pipeline.preprocess.preprocess import Preprocessor
+from lib.dataset.utils import save_preprocessed_data
+from lib.base.train import BaselineTrainer
+
+logger = logger.get()
+
+
+def run(config: DictConfig) -> None:
+    print("[DEBUG] Running baseline experiment with the following configuration:")
+    print(OmegaConf.to_yaml(config))
     
-      1) Preprocessing
-      2) Feature Extraction
-      3) Baseline (Deep4Net) Training
+    logger.info("Starting baseline model training.")
+    # STEP 1: Preprocessing
+    preprocessor = Preprocessor(config)
+    preprocessed_data = preprocessor.run()
     
-    The specific mode (single vs. pooled) is handled internally by the BaselineTrainer
-    based on cfg.experiment.mode.
-    """
-
-    # 1. Preprocessing
-    preprocessing = PreprocessingPipeline()
-    preprocessed_data = preprocessing.run(config)
-
-    # 2. Feature Extraction
-    feature_pipeline = FeatureExtractionPipeline()
-    features = feature_pipeline.run(config, preprocessed_data)
-
-    # 3. Baseline Training
-    trainer = BaselineTrainer()
-    trainer.run(config, features)
+    preprocessed_data_file = (
+        config.dataset.preprocessing.output_file
+        if "dataset" in config and "preprocessing" in config.dataset and "output_file" in config.dataset.preprocessing
+        else "./outputs/preprocessed_data.pkl"
+    )
+    save_preprocessed_data(preprocessed_data, preprocessed_data_file)
+    print(f"Preprocessed data saved to: {preprocessed_data_file}")
     
-    print("Baseline training pipeline completed successfully.")
+    # STEP 2: Baseline Model Training
+    trainer = BaselineTrainer()  # Trainer internally loads its model and experiment configurations
+    training_results = trainer.run()  # Handles both "single" and "pooled" modes based on config.experiment.mode
+    print("Baseline model training complete.")
+    

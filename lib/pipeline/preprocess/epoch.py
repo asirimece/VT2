@@ -2,7 +2,22 @@ import numpy as np
 import mne
 from omegaconf import OmegaConf
 
-# NOT USED
+def create_macro_epochs(raw: mne.io.Raw, dataset_config) -> mne.Epochs:
+    """
+    Create macro MNE Epochs from tmin_event to tmax_event around each event.
+    """
+    tmin = dataset_config.epoching.kwargs.tmin
+    tmax = dataset_config.epoching.kwargs.tmax
+    
+    # Extract events from annotations.
+    events, new_event_id = mne.events_from_annotations(raw, verbose=False)
+    epochs = mne.Epochs(
+        raw, events, event_id=new_event_id,
+        tmin=tmin, tmax=tmax,
+        baseline=None, preload=True, verbose=False
+    )
+    return epochs
+
 def extract_time_locked_epochs(raw, tmin, tmax):
     # Ensure tmin and tmax are floats (resolve if coming from a config)
     tmin = float(OmegaConf.to_container(tmin, resolve=True)) if hasattr(tmin, "keys") else float(tmin)
@@ -13,7 +28,7 @@ def extract_time_locked_epochs(raw, tmin, tmax):
                         baseline=None, preload=True, verbose=False)
     return epochs, event_id
 
-def force_sliding_window_cropping(epochs, window_length, step_size):
+def crop_subepochs(epochs, window_length, step_size):
     """
     Takes an MNE Epochs object (macro epochs) and re-crops each trial into overlapping
     sub-epochs of length window_length seconds, stepping every step_size seconds.
@@ -76,5 +91,5 @@ def force_sliding_window_cropping(epochs, window_length, step_size):
 
 def time_lock_and_slide_epochs(raw, tmin, tmax, window_length, step_size):
     epochs, event_id = extract_time_locked_epochs(raw, tmin, tmax)
-    new_epochs = force_sliding_window_cropping(epochs, window_length, step_size)
+    new_epochs = crop_subepochs(epochs, window_length, step_size)
     return new_epochs

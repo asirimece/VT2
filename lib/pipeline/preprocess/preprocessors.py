@@ -1,8 +1,11 @@
 # preprocessors.py
 import os
+from lib.logging import logger
 import mne
 import numpy as np
 import matplotlib.pyplot as plt
+
+logger = logger.get()
 
 def bandpass_filter(raw, low=4, high=38, method='iir'):
     raw_filtered = raw.copy().filter(l_freq=low, h_freq=high, method=method, verbose=False)
@@ -22,12 +25,9 @@ def remove_eog_artifacts_ica(raw,
                              plots_output_dir="./ica_plots",
                              subj_id=None,
                              sess_label=None):
-    """
-    Remove EOG artifacts using ICA and optionally save plots.
-    """
+
     raw.load_data()
 
-    # If we are saving plots, resolve the absolute output directory and ensure it exists.
     if save_ica_plots:
         abs_plots_output_dir = os.path.abspath(plots_output_dir)
         os.makedirs(abs_plots_output_dir, exist_ok=True)
@@ -55,82 +55,62 @@ def remove_eog_artifacts_ica(raw,
     
     fig_label = f"subj{subj_id}_{sess_label}" if subj_id else ""
     
-    # Plot components
     figs_components = ica.plot_components(show=show_ica_plots)
     
-    # Save ICA components plot(s) if requested
+    # Save ICA components plots if enabled
     if save_ica_plots and figs_components:
         if isinstance(figs_components, list):
-            # Iterate if it's a list of figures
             for i, fig in enumerate(figs_components):
                 out_path = os.path.join(abs_plots_output_dir, f"ica_components_{fig_label}_page{i}.png")
                 fig.savefig(out_path)
-                print(f"Saved ICA components figure to {out_path}")
+                logger.info(f"Saved ICA components figure to {out_path}")
         else:
-            # Single figure
             out_path = os.path.join(abs_plots_output_dir, f"ica_components_{fig_label}.png")
             figs_components.savefig(out_path)
-            print(f"Saved ICA components figure to {out_path}")
+            logger.info(f"Saved ICA components figure to {out_path}")
     
-    # Plot sources and save if requested
     fig_sources = ica.plot_sources(raw, show=show_ica_plots)
     if save_ica_plots and fig_sources:
         out_path = os.path.join(abs_plots_output_dir, f"ica_sources_{fig_label}.png")
         fig_sources.savefig(out_path)
-        print(f"Saved ICA sources figure to {out_path}")
+        logger.info(f"Saved ICA sources figure to {out_path}")
     
-    # Apply ICA to remove the identified EOG artifacts
+    # Apply ICA to remove EOG artifacts
     ica.apply(raw)
-    print(f"[ICA] Applied ICA. Excluded {len(ica.exclude)} components.")
+    logger.info(f"[ICA] Applied ICA. Excluded {len(ica.exclude)} components.")
     
     return raw
 
 
 def data_split_concatenate(subj_data, train_session="0train", test_session="1test"):
     """
-    Splits and concatenates a subject's data into continuous training and testing Raw objects.
-    
-    If a session contains multiple runs, all runs are concatenated using mne.concatenate_raws.
-    
-    Parameters
-    ----------
-    subj_data : dict
-        Dictionary with session keys and Raw objects or dicts of runs.
-    train_session : str, optional
-    test_session : str, optional
-        
-    Returns
-    -------
-    train_raw, test_raw : mne.io.Raw
+    If a session contains multiple runs, all runs are concatenated.
     """
-    # Process training session
     train_data = subj_data.get(train_session)
     if isinstance(train_data, dict):
         runs = list(train_data.values())
         if len(runs) > 1:
-            print(f"Warning: Found multiple runs {list(train_data.keys())} for training session '{train_session}'. Concatenating all runs.")
+            logger.info(f"Found multiple runs {list(train_data.keys())} for training session '{train_session}'. Concatenating all runs.")
             train_raw = mne.concatenate_raws(runs)
         else:
             train_raw = runs[0]
     else:
         train_raw = train_data
-
-    # Process testing session
+        
     test_data = subj_data.get(test_session)
     if isinstance(test_data, dict):
         runs = list(test_data.values())
         if len(runs) > 1:
-            print(f"Warning: Found multiple runs {list(test_data.keys())} for testing session '{test_session}'. Concatenating all runs.")
+            logger.info(f"Found multiple runs {list(test_data.keys())} for testing session '{test_session}'. Concatenating all runs.")
             test_raw = mne.concatenate_raws(runs)
         else:
             test_raw = runs[0]
     else:
         test_raw = test_data
 
-    # Optional: Quick check of event annotations
-    print("Training session events summary:")
+    print("[DEBUG] Training session events summary:")
     print(mne.events_from_annotations(train_raw)[0][:5])
-    print("Testing session events summary:")
+    print("[DEBUG] Testing session events summary:")
     print(mne.events_from_annotations(test_raw)[0][:5])
 
     return train_raw, test_raw

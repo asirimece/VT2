@@ -24,10 +24,11 @@ event_markers:
   right_hand: 2
   feet: 3
   tongue: 4
+
 preprocessing:
   remove_eog_artifacts: true
-  show_ica_plots: false     # if true, show interactive plots
-  save_ica_plots: false      # if true, save them to disk
+  show_ica_plots: false     
+  save_ica_plots: false     
   ica_plots_dir: "./ica_plots"
   raw_preprocessors:
     bandpass_filter:
@@ -41,7 +42,7 @@ preprocessing:
       tmin: 2.0         # start 500 ms before the cue
       tmax: 6.0          # end 4.0 s after the cue (total epoch = 4.5 s)
       crop_window_length: 2.0    # each sliding-window crop is 2.0 s long
-      crop_step_size: 0.5     # shift by 1 sample at 250 Hz (≈0.004 s)
+      crop_step_size: 0.5     
       baseline: null
   data_split:
     kwargs:
@@ -51,6 +52,7 @@ preprocessing:
     kwargs:
       #apply_on: "training"
       smoothing_factor: 0.1
+  output_file: "./outputs/preprocessed_data.pkl"
 
 tracker:
   wandb_project: 'bci_iv2a_project'

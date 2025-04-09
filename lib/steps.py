@@ -151,40 +151,8 @@ def run_pipeline(cfg):
     #save_final_data(features, final_output_file)
     return features
 
-def save_features(features, cfg, filename="./features.pkl"):
-    methods_cfg = cfg.feature_extraction.get('methods', [])
-    method_names = [str(method_cfg.get('name', 'unknown')) for method_cfg in methods_cfg]
-    # Include dimensionality reduction and feature selection steps in the filename
-    dr = cfg.feature_extraction.get('dimensionality_reduction', {}).get('name', '')
-    fs = cfg.feature_extraction.get('feature_selection', {}).get('name', '')
-    methods_str = "_".join(method_names)
-    base, ext = os.path.splitext(filename)
-    new_filename = f"{base}_{methods_str}_{dr}_{fs}{ext}"
-    with open(new_filename, "wb") as f:
-        pickle.dump(features, f)
-    print(f"Features saved to {new_filename}")
 
-def aggregate_data(features, session):
-    X_list = []
-    y_list = []
-    for subj, sessions in features.items():
-        if session in sessions:
-            X_list.append(sessions[session]['combined'])
-            y_list.append(sessions[session]['labels'])
-    X = np.concatenate(X_list, axis=0)
-    y = np.concatenate(y_list, axis=0)
-    return X, y
-    
-def main():
-    from omegaconf import OmegaConf
-    cfg = OmegaConf.load("config/config.yaml")
-    features = run_pipeline(cfg)
-    save_features(features, cfg)
-    # (Further stages: clustering, classification, etc.)
-    print("Pipeline complete.")
 
-if __name__ == "__main__":
-    main()
 
 """
     #!/usr/bin/env python

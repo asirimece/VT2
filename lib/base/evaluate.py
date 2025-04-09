@@ -1,5 +1,5 @@
-from lib.evaluate.metrics import MetricsEvaluator
-from lib.evaluate.visuals import VisualEvaluator
+from lib.base.metrics import MetricsEvaluator
+from lib.base.visuals import VisualEvaluator
 
 class Evaluator:
     def __init__(self, config):

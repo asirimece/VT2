@@ -13,22 +13,22 @@ from lib.tl.trainer import TLTrainer
 from lib.tl.evaluator import TLEvaluator
 
 @hydra.main(config_path="../../config/experiment", config_name="tl.yaml", version_base=None)
-def main(cfg: DictConfig):
-    device = cfg.device
-    os.makedirs(cfg.out_dir, exist_ok=True)
+def main(config: DictConfig):
+    device = config.device
+    os.makedirs(config.out_dir, exist_ok=True)
     
     print(f"[DEBUG] Device: {device}")
-    print(f"[DEBUG] Output directory: {cfg.out_dir}")
+    print(f"[DEBUG] Output directory: {config.out_dir}")
 
     # 1) Load new subject data from preprocessed_data file.
-    with open(cfg.preprocessed_data, "rb") as f:
+    with open(config.preprocessed_data, "rb") as f:
         preprocessed_data = pickle.load(f)
-    print(f"[DEBUG] Preprocessed data loaded from {cfg.preprocessed_data}")
+    print(f"[DEBUG] Preprocessed data loaded from {config.preprocessed_data}")
 
-    if cfg.subject not in preprocessed_data:
-        raise ValueError(f"Subject '{cfg.subject}' not found in {cfg.preprocessed_data}!")
+    if config.subject not in preprocessed_data:
+        raise ValueError(f"Subject '{config.subject}' not found in {config.preprocessed_data}!")
     
-    subject_data = preprocessed_data[cfg.subject]
+    subject_data = preprocessed_data[config.subject]
     train_ep = subject_data["0train"]
     test_ep  = subject_data["1test"]
 
@@ -51,20 +51,20 @@ def main(cfg: DictConfig):
     # 2) Build TLModel instance using hyperparameters from the config.
     tl_model = TLModel(
         n_chans=n_chans,
-        n_outputs=cfg.model.n_outputs,
-        n_clusters_pretrained=cfg.model.n_clusters_pretrained,
+        n_outputs=config.model.n_outputs,
+        n_clusters_pretrained=config.model.n_clusters_pretrained,
         window_samples=window_samples
     )
     print(f"[DEBUG] TLModel instance created.")
 
-    state_dict = torch.load(cfg.pretrained_mtl_model, map_location=device)
+    state_dict = torch.load(config.pretrained_mtl_model, map_location=device)
     tl_model.load_state_dict(state_dict)
-    print(f"[DEBUG] Pretrained model loaded from {cfg.pretrained_mtl_model}")
+    print(f"[DEBUG] Pretrained model loaded from {config.pretrained_mtl_model}")
 
     # 4) Add a new head for the new subject using the provided feature dimension directly.
-    # Instead of "TL_{cfg.subject}", use a numeric id. This ensures that MultiTaskDeepNet's
+    # Instead of "TL_{config.subject}", use a numeric id. This ensures that MultiTaskDeepNet's
     # call to int(cid) works without error.
-    new_cluster_id = int(cfg.subject)
+    new_cluster_id = int(config.subject)
     feature_dim = 4  # Directly provided feature dimension (from previous backbone computation)
     print(f"[DEBUG] Adding new head with feature dimension: {feature_dim} for cluster id: {new_cluster_id}")
     tl_model.add_new_head(new_cluster_id, feature_dim=feature_dim)
@@ -72,17 +72,17 @@ def main(cfg: DictConfig):
     # 5) Prepare DataLoaders.
     train_dataset = TLSubjectDataset(X_train, y_train)
     test_dataset  = TLSubjectDataset(X_test,  y_test)
-    train_loader  = DataLoader(train_dataset, batch_size=cfg.batch_size, shuffle=True)
-    test_loader   = DataLoader(test_dataset,  batch_size=cfg.batch_size, shuffle=False)
+    train_loader  = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
+    test_loader   = DataLoader(test_dataset,  batch_size=config.batch_size, shuffle=False)
     print(f"[DEBUG] DataLoaders created.")
 
     # 6) Initialize and run the TL trainer.
     trainer = TLTrainer(
         model=tl_model,
         device=device,
-        freeze_backbone=cfg.freeze_backbone,
-        lr=cfg.lr,
-        epochs=cfg.epochs
+        freeze_backbone=config.freeze_backbone,
+        lr=config.lr,
+        epochs=config.epochs
     )
     print(f"[DEBUG] Starting training...")
     trainer.train(train_loader, new_cluster_id)
@@ -92,7 +92,7 @@ def main(cfg: DictConfig):
     print(f"[DEBUG] Evaluation completed.")
 
     # 7) Save the TL results.
-    out_results_path = os.path.join(cfg.out_dir, f"tl_{cfg.subject}_results.pkl")
+    out_results_path = os.path.join(config.out_dir, f"tl_{config.subject}_results.pkl")
     tl_results.save(out_results_path)
     print(f"[INFO] TL results saved to {out_results_path}")
 
@@ -102,7 +102,7 @@ def main(cfg: DictConfig):
     print("[TL Evaluation] =>", metrics)
 
     # 9) Optionally save the final model.
-    out_model_path = os.path.join(cfg.out_dir, f"tl_{cfg.subject}_model.pth")
+    out_model_path = os.path.join(config.out_dir, f"tl_{config.subject}_model.pth")
     torch.save(tl_model.state_dict(), out_model_path)
     print(f"[INFO] TL model saved to {out_model_path}")
 

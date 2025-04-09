@@ -5,9 +5,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
+from lib.logging import logger
 from lib.mtl.trainer import MTLWrapper
 from omegaconf import OmegaConf
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+
+logger = logger.get()
 
 class MTLEvaluator:
     def __init__(self, mtl_wrapper, baseline_wrapper, config):
@@ -61,7 +64,7 @@ class MTLEvaluator:
             if isinstance(res, list):
                 res = res[-1]
             if not (isinstance(res, dict) and "ground_truth" in res and "predictions" in res):
-                print(f"Warning: Results for subject {subj} are not in the expected format; skipping.")
+                logger.warning(f"Results for subject {subj} are not in the expected format; skipping.")
                 continue
             all_gt.extend(res["ground_truth"])
             all_pred.extend(res["predictions"])

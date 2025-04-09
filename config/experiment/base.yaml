@@ -1,5 +1,6 @@
 experiment:
   mode: "pooled"         # "single" or "pooled"
+  device: "cuda"
 
   single:
     n_runs: 5              
@@ -8,8 +9,7 @@ experiment:
     learning_rate: 0.0005
     optimizer: "adam"      
     loss: "cross_entropy"  
-    device: "cuda"
-
+    
   pooled:
     n_runs: 5              
     epochs: 200             
@@ -17,7 +17,6 @@ experiment:
     learning_rate: 0.0005
     optimizer: "adam"      
     loss: "cross_entropy"  
-    device: "cuda"
 
 data:
   preprocessed_data_file: "./outputs/preprocessed_data.pkl"
