@@ -1,16 +1,15 @@
+# multitask_trainer.py (Updated Main Evaluation Section)
 import torch
 from torch.utils.data import DataLoader
-from lib.mtl.trainer import EEGMultiTaskDataset, train_mtl_model, evaluate_mtl_model
+from lib.mtl.trainer import EEGMultiTaskDataset, train_mtl_model, evaluate_mtl_model, MTLWrapper
 from lib.mtl.model import MultiTaskDeep4Net
-from lib.cluster.cluster import ClusterWrapper, SubjectClusterer  # Import your implemented ClusterWrapper
+from lib.cluster.cluster import ClusterWrapper, SubjectClusterer
 import yaml
 import numpy as np
 import pickle
 import matplotlib.pyplot as plt
-from sklearn.decomposition import PCA
-from lib.mtl.trainer import MTLWrapper  # MTLWrapper class from your multitask_trainer.py
-from lib.mtl.evaluate import MTLEvaluator   # Your evaluator module
 from lib.mtl.utils import convert_state_dict_keys
+from lib.base.trainer import BaseWrapper
 
 def load_preprocessed_data(preprocessed_file="outputs/preprocessed_data.pkl"):
     with open(preprocessed_file, "rb") as f:
@@ -25,22 +24,24 @@ def load_preprocessed_data(preprocessed_file="outputs/preprocessed_data.pkl"):
             labels = epochs.events[:, -1]
             data_list.append(data)
             labels_list.append(labels)
-            subject_ids_list.extend([subj] * data.shape[0])
+            # Convert subject ID to string.
+            subject_ids_list.extend([str(subj)] * data.shape[0])
     
     X = np.concatenate(data_list, axis=0)
     y = np.concatenate(labels_list, axis=0)
     return X, y, subject_ids_list
 
-def load_cluster_wrapper(config_path="config/dataset/bci_iv2a.yaml", features_file="outputs/2025-03-28/both_ems/features___.pkl"):
+def load_cluster_wrapper(config_path="config/experiment/mtl.yaml", features_file="./outputs/features.pkl"):
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
-    clustering_config = config.get('clustering', {})
+    # If your file has clustering nested under "experiment", get it like this:
+    clustering_config = config.get('experiment', {}).get('clustering', {})
     subject_clusterer = SubjectClusterer(features_file, clustering_config)
     cluster_wrapper = subject_clusterer.cluster_subjects(method=clustering_config.get('method', 'kmeans'))
     return cluster_wrapper
 
 def plot_cluster_distribution(cluster_wrapper, output_file="cluster_distribution.png"):
-    assignments = cluster_wrapper.labels  # dict: subject_id -> cluster label
+    assignments = cluster_wrapper.labels
     cleaned_labels = []
     for value in assignments.values():
         if isinstance(value, dict):
@@ -72,7 +73,7 @@ def plot_subject_scatter(cluster_wrapper, output_file="subject_scatter.png"):
             numeric_labels.append(-1)
     labels = np.array(numeric_labels)
     
-    from sklearn.decomposition import PCA
+    """from sklearn.decomposition import PCA
     pca = PCA(n_components=2)
     X_reduced = pca.fit_transform(X)
     plt.figure(figsize=(8,6))
@@ -82,7 +83,7 @@ def plot_subject_scatter(cluster_wrapper, output_file="subject_scatter.png"):
     plt.title("Subject-level Representations (PCA)")
     plt.colorbar(scatter, label="Cluster Label")
     plt.savefig(output_file)
-    plt.close()
+    plt.close()"""
 
 def main():
     # Load preprocessed EEG data.
@@ -97,14 +98,12 @@ def main():
     plot_subject_scatter(cluster_wrapper, output_file="subject_scatter.png")
     
     # Create dataset and dataloader.
-    # Note: EEGMultiTaskDataset now returns (sample, label, subject_id, cluster_id)
     dataset = EEGMultiTaskDataset(data, labels, subject_ids, cluster_wrapper)
-    # Use shuffle=False for evaluation so subject_ids remain in order.
     dataloader = DataLoader(dataset, batch_size=64, shuffle=False)
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    # Pass backbone_kwargs with n_times.
+    # Set up the model.
     backbone_kwargs = {"n_times": data.shape[2]}
     model = MultiTaskDeep4Net(n_chans=data.shape[1], n_outputs=4, n_clusters=n_clusters, backbone_kwargs=backbone_kwargs)
     
@@ -116,7 +115,6 @@ def main():
     model = train_mtl_model(model, dataloader, criterion, optimizer, device, num_epochs=100)
     
     print("Evaluating MTL model...")
-    # Run evaluation; our evaluate_mtl_model now returns subject_ids, ground truth, and predictions.
     subjects, all_labels, all_preds = evaluate_mtl_model(model, dataloader, device)
     
     # ----------------------------
@@ -124,41 +122,56 @@ def main():
     # ----------------------------
     subject_results = {}
     for subj, gt, pred in zip(subjects, all_labels, all_preds):
-        if subj not in subject_results:
-            subject_results[subj] = {"ground_truth": [], "predictions": []}
-        subject_results[subj]["ground_truth"].append(gt)
-        subject_results[subj]["predictions"].append(pred)
+        subj_str = str(subj)
+        if subj_str not in subject_results:
+            subject_results[subj_str] = {"ground_truth": [], "predictions": []}
+        subject_results[subj_str]["ground_truth"].append(gt)
+        subject_results[subj_str]["predictions"].append(pred)
     
-    # Use your cluster_wrapper to get cluster assignments (adjust if stored differently)
+    # Get cluster assignments from cluster_wrapper.
     cluster_assignments = cluster_wrapper.labels
     
-    # Create the MTLWrapper instance and save it.
+    # Create and save the MTLWrapper instance.
     mtl_wrapper = MTLWrapper(subject_results, cluster_assignments=cluster_assignments)
     mtl_wrapper.save("mtl_wrapper_results.pkl")
     print("MTLWrapper results saved to mtl_wrapper_results.pkl")
     
-    # Save the entire MTL model
-    #torch.save(model, "pretrained_mtl_model.pth")
-    # Save only weights
-    # Convert the state dict keys to a consistent format and re-save the weights.
+    # Save model weights.
     converted_state_dict = convert_state_dict_keys(model.state_dict())
     torch.save(converted_state_dict, "pretrained_mtl_model_weights.pth")
     print("MTL model weights saved to pretrained_mtl_model_weights.pth")
     
     # ----------------------------
-    # Integrate the Evaluator
+    # Evaluate Against Baselines
     # ----------------------------
-    # Load your baseline results (make sure training_results.pkl exists)
-    with open("./trained_models/training_results.pkl", "rb") as f:
-        baseline_results = pickle.load(f)
-    
-    # Load evaluation configuration from config/experiment/mtl.yaml
+    # Load evaluation configuration.
     with open("config/experiment/mtl.yaml", "r") as f:
         eval_config = yaml.safe_load(f)
     
-    # Now pass the configuration as the third argument.
-    evaluator = MTLEvaluator(mtl_wrapper, baseline_results, eval_config)
-    evaluator.evaluate(verbose=True)
+    from lib.mtl.evaluate import MTLEvaluator
+    
+    # Load both baseline wrappers.
+    baseline_pooled = MTLWrapper.load("./trained_models/pooled_baseline_results.pkl")
+    baseline_single = MTLWrapper.load("./trained_models/single_baseline_results.pkl")
+    
+    # Evaluate MTL results against the pooled baseline.
+    print("\nEvaluating MTL results against the pooled baseline:")
+    evaluator_pooled = MTLEvaluator(mtl_wrapper, baseline_pooled, eval_config)
+    summary_pooled = evaluator_pooled.evaluate(verbose=True)
+    
+    # Evaluate MTL results against the single-subject baseline.
+    print("\nEvaluating MTL results against the single-subject baseline:")
+    evaluator_single = MTLEvaluator(mtl_wrapper, baseline_single, eval_config)
+    summary_single = evaluator_single.evaluate(verbose=True)
+    
+    # Combine and save summaries.
+    combined_summary = {
+        "pooled_baseline": summary_pooled,
+        "single_baseline": summary_single
+    }
+    with open("mtl_evaluation_summary.pkl", "wb") as f:
+        pickle.dump(combined_summary, f)
+    print("Combined evaluation summary saved to mtl_evaluation_summary.pkl")
 
 if __name__ == "__main__":
     main()

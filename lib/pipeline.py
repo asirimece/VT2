@@ -72,8 +72,8 @@ def run_preprocessing_pipeline(cfg,
 
     results = {}
     # Get event mapping dictionaries from the config (assumed to be under cfg.dataset)
-    config_unify_annot = cfg.dataset.get("unify_annotations", None)
-    config_event_markers = cfg.dataset.get("event_markers", None)
+    #config_unify_annot = cfg.dataset.get("unify_annotations", None)
+    config_event_markers = cfg.get("event_markers", None)
     
     for subj in sorted(all_data.keys()):
         print(f"\n--- Subject: {subj} ---")
@@ -99,8 +99,10 @@ def run_preprocessing_pipeline(cfg,
             raw.pick_types(eeg=True, stim=False, exclude=[])
             
             # 6) Create macro epochs (e.g. 2–6 s)
-            macro_epochs = time_lock_epochs(raw, tmin=tmin_event, tmax=tmax_event,
+            """macro_epochs = time_lock_epochs(raw, tmin=tmin_event, tmax=tmax_event,
                                             unify_annot=config_unify_annot,
+                                            event_markers=config_event_markers)"""
+            macro_epochs = time_lock_epochs(raw, tmin=tmin_event, tmax=tmax_event,
                                             event_markers=config_event_markers)
             print(f"  Created macro epochs: shape={macro_epochs.get_data().shape}, "
                   f"tmin={macro_epochs.tmin}, tmax={macro_epochs.tmax}")

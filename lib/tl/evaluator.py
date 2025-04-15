@@ -72,9 +72,9 @@ class TLEvaluator:
         plt.imshow(cm, interpolation='nearest', cmap=cmap)
         plt.title(title)
         plt.colorbar()
-        tick_marks = np.arange(len(classes))
-        plt.xticks(tick_marks, classes, rotation=45)
-        plt.yticks(tick_marks, classes)
+        #tick_marks = np.arange(len(classes))
+        plt.xticks(classes, rotation=45)
+        plt.yticks(classes)
 
         fmt = '.2f' if normalize else 'd'
         thresh = cm.max() / 2.

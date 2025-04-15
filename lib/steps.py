@@ -2,10 +2,9 @@
 import os
 import pickle
 import numpy as np
-
+from omegaconf import OmegaConf
 from lib.pipeline import run_preprocessing_pipeline, save_preprocessed_data
 from lib.feature_extraction import run_feature_extraction
-from lib.mtl.cluster import compute_subject_level_representation, subject_level_clustering
 from sklearn.preprocessing import StandardScaler
 #from sklearn.decomposition import PCA
 #from sklearn.linear_model import Lasso, ElasticNetCV
@@ -17,16 +16,17 @@ def run_preprocessing(cfg):
     save_preprocessed_data(preprocessed_data, out_file)
     return preprocessed_data
 
-def run_feature_extraction_stage(cfg, preprocessed_data):
+def run_feature_extraction_stage(feat_cfg, preprocessed_data):
     print("Running feature extraction stage...")
     features = {}
     # For each subject and session, compute the individual features,
     # then normalize, concatenate them, apply PCA, and then feature selection.
     for subj, sessions in preprocessed_data.items():
         features[subj] = {}
+    
         for sess_label, epochs in sessions.items():
             # Get the raw feature matrices from each method
-            feat_dict = run_feature_extraction(epochs, cfg.feature_extraction)
+            feat_dict = run_feature_extraction(epochs,feat_cfg)
             
             # Check that at least one method produced features
             if not feat_dict:
@@ -38,6 +38,7 @@ def run_feature_extraction_stage(cfg, preprocessed_data):
             normalized_feats = {}
             for method, feats in feat_dict.items():
                 normalized_feats[method] = scaler.fit_transform(feats)
+                print(f"[DEBUG] Normalized features for method {method}: shape {normalized_feats[method].shape}")
             
             # Concatenate all normalized features along axis=1 (per trial)
             combined_features = None
@@ -50,8 +51,8 @@ def run_feature_extraction_stage(cfg, preprocessed_data):
                     combined_features = np.concatenate((combined_features, feats), axis=1)
             
             # Optionally apply PCA for initial dimensionality reduction
-            if 'dimensionality_reduction' in cfg.feature_extraction:
-                dim_red_cfg = cfg.feature_extraction.dimensionality_reduction
+            if 'dimensionality_reduction' in feat_cfg:
+                dim_red_cfg = feat_cfg.dimensionality_reduction
                 name = dim_red_cfg['name']
                 dr_kwargs = dim_red_cfg.get('kwargs', {})
                 if name.lower() == 'pca':
@@ -63,8 +64,8 @@ def run_feature_extraction_stage(cfg, preprocessed_data):
             labels = epochs.events[:, -1]
             
             # Now apply supervised feature selection if specified
-            if 'feature_selection' in cfg.feature_extraction:
-                fs_cfg = cfg.feature_extraction.feature_selection
+            if 'feature_selection' in feat_cfg:
+                fs_cfg = feat_cfg.feature_selection
                 fs_method = fs_cfg.get('name', 'lasso')
                 fs_kwargs = fs_cfg.get('kwargs', {})
                 
@@ -135,6 +136,7 @@ def run_feature_extraction_stage(cfg, preprocessed_data):
             features[subj][sess_label] = feat_result
             print(f"Extracted and combined features for subject {subj}, session {sess_label}")
     return features
+
 """def save_final_data(final_data, filename="./outputs/preprocessed_data.pkl"):
     out_dir = os.path.dirname(filename)
     if out_dir and not os.path.exists(out_dir):
@@ -151,12 +153,13 @@ def run_pipeline(cfg):
     #save_final_data(features, final_output_file)
     return features
 
-def save_features(features, cfg, filename="./features.pkl"):
-    methods_cfg = cfg.feature_extraction.get('methods', [])
+def save_features(features, feat_cfg, filename="./features.pkl"):
+    feat_cfg = OmegaConf.select(feat_cfg, "feature_extraction")
+    methods_cfg = feat_cfg.get('methods', [])
     method_names = [str(method_cfg.get('name', 'unknown')) for method_cfg in methods_cfg]
     # Include dimensionality reduction and feature selection steps in the filename
-    dr = cfg.feature_extraction.get('dimensionality_reduction', {}).get('name', '')
-    fs = cfg.feature_extraction.get('feature_selection', {}).get('name', '')
+    dr = feat_cfg.get('dimensionality_reduction', {}).get('name', '')
+    fs = feat_cfg.get('feature_selection', {}).get('name', '')
     methods_str = "_".join(method_names)
     base, ext = os.path.splitext(filename)
     new_filename = f"{base}_{methods_str}_{dr}_{fs}{ext}"
@@ -178,8 +181,9 @@ def aggregate_data(features, session):
 def main():
     from omegaconf import OmegaConf
     cfg = OmegaConf.load("config/config.yaml")
+    feat_cfg = OmegaConf.load("config/feature_extraction/feature_extraction.yaml")
     features = run_pipeline(cfg)
-    save_features(features, cfg)
+    save_features(features, feat_cfg)
     # (Further stages: clustering, classification, etc.)
     print("Pipeline complete.")
 

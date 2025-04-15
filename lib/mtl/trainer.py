@@ -10,23 +10,17 @@ import pickle
 class MTLWrapper:
     """
     A container for wrapping MTL training results.
-    
-    Attributes:
-      results_by_subject (dict): Maps subject IDs (or "pooled") to a dict containing:
-            "ground_truth": array-like of true labels,
-            "predictions": array-like of predicted labels.
-      training_logs (dict): Training logs such as per-epoch loss/accuracy.
-      cluster_assignments (dict): Mapping from subject IDs to cluster labels.
-      additional_info (dict): Any additional metadata (e.g., hyperparameters).
     """
     def __init__(self, results_by_subject, training_logs=None, cluster_assignments=None, additional_info=None):
-        self.results_by_subject = results_by_subject
+        # Convert subject keys to strings.
+        self.results_by_subject = {str(k): v for k, v in results_by_subject.items()}
         self.training_logs = training_logs if training_logs is not None else {}
-        self.cluster_assignments = cluster_assignments if cluster_assignments is not None else {}
+        # Convert cluster_assignments keys to strings.
+        self.cluster_assignments = {str(k): v for k, v in (cluster_assignments if cluster_assignments is not None else {}).items()}
         self.additional_info = additional_info if additional_info is not None else {}
     
     def get_subject_results(self, subject):
-        return self.results_by_subject.get(subject)
+        return self.results_by_subject.get(str(subject))
     
     def save(self, filename):
         with open(filename, "wb") as f:
@@ -37,25 +31,20 @@ class MTLWrapper:
     def load(cls, filename):
         with open(filename, "rb") as f:
             obj = pickle.load(f)
-        # If already an instance of MTLWrapper, return it.
         if isinstance(obj, cls):
             return obj
-        # If it's a dict with the keys "ground_truth" and "predictions", then wrap it.
         if isinstance(obj, dict) and ("ground_truth" in obj and "predictions" in obj):
             wrapped = {"pooled": obj}
             print("[DEBUG] Loaded results as dict with keys ['ground_truth', 'predictions']. Wrapping under key 'pooled'.")
             return cls(results_by_subject=wrapped)
-        # Otherwise, if it's a dict (assumed to be mapping subject IDs to results), wrap it.
         if isinstance(obj, dict):
             return cls(results_by_subject=obj)
-        # If it's a list, wrap it as pooled.
         if isinstance(obj, list):
             wrapped = {"pooled": obj}
             return cls(results_by_subject=wrapped)
         return obj
 
 
-    
 class EEGMultiTaskDataset(Dataset):
     def __init__(self, data, labels, subject_ids, cluster_wrapper):
         """
@@ -63,13 +52,14 @@ class EEGMultiTaskDataset(Dataset):
 
         Parameters:
             data (np.array): EEG samples, shape [N, channels, time].
-            labels (np.array): Class labels for each sample, shape [N].
+            labels (np.array): Class labels for each sample.
             subject_ids (list): Subject identifier for each sample.
-            cluster_wrapper (ClusterWrapper): An instance that provides get_cluster_for_subject(subject_id).
+            cluster_wrapper (ClusterWrapper): An instance providing get_cluster_for_subject(subject_id).
         """
         self.data = data
         self.labels = labels
-        self.subject_ids = subject_ids
+        # Convert subject IDs to strings.
+        self.subject_ids = [str(sid) for sid in subject_ids]
         self.cluster_wrapper = cluster_wrapper
 
     def __len__(self):
@@ -81,6 +71,7 @@ class EEGMultiTaskDataset(Dataset):
         subject_id = self.subject_ids[index]
         cluster_id = self.cluster_wrapper.get_cluster_for_subject(subject_id)
         return sample, label, subject_id, cluster_id
+
 
 def train_mtl_model(model, dataloader, criterion, optimizer, device, num_epochs=100):
     model.to(device)

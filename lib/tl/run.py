@@ -1,12 +1,30 @@
 #!/usr/bin/env python
-# run_tl.py
-
 import os
 import pickle
+import random
+import numpy as np
 import torch
+import torch.nn as nn
 from torch.utils.data import DataLoader
 import hydra
 from omegaconf import DictConfig
+
+# Set up reproducibility
+seed = 42  # or any fixed integer value
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(seed)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+
+# Optional: Define a worker init function for DataLoader if using multiple workers
+def worker_init_fn(worker_id):
+    np.random.seed(seed + worker_id)
+    random.seed(seed + worker_id)
+    # torch.manual_seed(seed + worker_id)  # not typically needed if using torch.cuda.manual_seed_all
+
 from lib.tl.model import TLModel
 from lib.tl.dataset import TLSubjectDataset
 from lib.tl.trainer import TLTrainer
@@ -14,9 +32,9 @@ from lib.tl.evaluator import TLEvaluator
 
 @hydra.main(config_path="../../config/experiment", config_name="tl.yaml", version_base=None)
 def main(cfg: DictConfig):
+    # Print device and output information
     device = cfg.device
     os.makedirs(cfg.out_dir, exist_ok=True)
-    
     print(f"[DEBUG] Device: {device}")
     print(f"[DEBUG] Output directory: {cfg.out_dir}")
 
@@ -62,18 +80,17 @@ def main(cfg: DictConfig):
     print(f"[DEBUG] Pretrained model loaded from {cfg.pretrained_mtl_model}")
 
     # 4) Add a new head for the new subject using the provided feature dimension directly.
-    # Instead of "TL_{cfg.subject}", use a numeric id. This ensures that MultiTaskDeepNet's
-    # call to int(cid) works without error.
+    # Instead of "TL_{cfg.subject}", use a numeric id.
     new_cluster_id = int(cfg.subject)
     feature_dim = 4  # Directly provided feature dimension (from previous backbone computation)
     print(f"[DEBUG] Adding new head with feature dimension: {feature_dim} for cluster id: {new_cluster_id}")
     tl_model.add_new_head(new_cluster_id, feature_dim=feature_dim)
 
-    # 5) Prepare DataLoaders.
+    # 5) Prepare DataLoaders. Pass worker_init_fn if desired.
     train_dataset = TLSubjectDataset(X_train, y_train)
     test_dataset  = TLSubjectDataset(X_test,  y_test)
-    train_loader  = DataLoader(train_dataset, batch_size=cfg.batch_size, shuffle=True)
-    test_loader   = DataLoader(test_dataset,  batch_size=cfg.batch_size, shuffle=False)
+    train_loader  = DataLoader(train_dataset, batch_size=cfg.batch_size, shuffle=True, worker_init_fn=worker_init_fn)
+    test_loader   = DataLoader(test_dataset,  batch_size=cfg.batch_size, shuffle=False, worker_init_fn=worker_init_fn)
     print(f"[DEBUG] DataLoaders created.")
 
     # 6) Initialize and run the TL trainer.
@@ -98,7 +115,8 @@ def main(cfg: DictConfig):
 
     # 8) Evaluate and print metrics.
     evaluator = TLEvaluator()
-    metrics = evaluator.evaluate(tl_results)
+    # Specify class names if you have them, e.g., class_names=['0', '1', '2', '3']
+    metrics = evaluator.evaluate(tl_results, class_names=None, plot_confusion=True, save_plot_path=os.path.join(cfg.out_dir, "confusion_matrix.png"))
     print("[TL Evaluation] =>", metrics)
 
     # 9) Optionally save the final model.

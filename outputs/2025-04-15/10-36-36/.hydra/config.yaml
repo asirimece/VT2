@@ -1,0 +1,12 @@
+pretrained_mtl_model: ./pretrained_mtl_model_weights.pth
+preprocessed_data: ./outputs/preprocessed_data.pkl
+subject: 9
+freeze_backbone: true
+epochs: 20
+lr: 0.001
+device: cpu
+out_dir: tl_outputs
+batch_size: 64
+model:
+  n_outputs: 4
+  n_clusters_pretrained: 8

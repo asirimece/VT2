@@ -1,29 +1,21 @@
 # mtlevaluator.py
-
 import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
+from lib.base.trainer import BaseWrapper
 from lib.mtl.trainer import MTLWrapper
 from omegaconf import OmegaConf
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+
 
 class MTLEvaluator:
     def __init__(self, mtl_wrapper, baseline_wrapper, config):
         """
         Initializes the evaluator.
-        
-        Parameters:
-          mtl_wrapper (MTLWrapper): Wrapped MTL training results.
-              Expected to have:
-                - results_by_subject: dict mapping subject IDs (or "pooled") to a dict with keys "ground_truth" and "predictions"
-                - cluster_assignments: (optional) dict mapping subject IDs to cluster IDs.
-          baseline_wrapper (MTLWrapper or dict): Wrapped baseline results with a similar interface.
-          config (dict): Evaluation configuration (loaded from YAML via OmegaConf) for additional parameters.
         """
         self.mtl_wrapper = mtl_wrapper
-        # If baseline_wrapper is a plain dict, wrap it.
         if isinstance(baseline_wrapper, dict):
             self.baseline_wrapper = type(mtl_wrapper)(results_by_subject=baseline_wrapper)
         else:
@@ -34,27 +26,23 @@ class MTLEvaluator:
     def load_results(filename):
         with open(filename, "rb") as f:
             obj = pickle.load(f)
-        # If obj is already an instance of MTLWrapper, return it.
         if hasattr(obj, "results_by_subject"):
             return obj
-        # If it's a dict with "ground_truth" and "predictions", wrap under key "pooled".
         if isinstance(obj, dict) and set(obj.keys()) == {"ground_truth", "predictions"}:
             wrapped = {"pooled": obj}
             print("[DEBUG] Loaded results as dict with keys ['ground_truth', 'predictions']. Wrapping under key 'pooled'.")
             from mtl_wrapper import MTLWrapper
             return MTLWrapper(results_by_subject=wrapped)
-        # If it's a dict mapping subject IDs, wrap it.
         if isinstance(obj, dict):
             from mtl_wrapper import MTLWrapper
             return MTLWrapper(results_by_subject=obj)
-        # If it's a list, wrap it as pooled.
         if isinstance(obj, list):
             from mtl_wrapper import MTLWrapper
             return MTLWrapper(results_by_subject={"pooled": obj})
         return obj
 
     def compute_overall_metrics(self, wrapper):
-        """Compute overall accuracy, confusion matrix, and classification report from a wrapper."""
+        """Compute overall metrics."""
         all_gt = []
         all_pred = []
         for subj, res in wrapper.results_by_subject.items():
@@ -73,10 +61,6 @@ class MTLEvaluator:
         return {"accuracy": overall_acc, "confusion_matrix": overall_cm, "report": overall_report}
 
     def compute_cluster_metrics(self, wrapper):
-        """
-        Computes cluster-level metrics by grouping subjects based on cluster assignments.
-        Returns a dict mapping each cluster to its metrics.
-        """
         cluster_data = {}
         if not hasattr(wrapper, "cluster_assignments") or not wrapper.cluster_assignments:
             return {}
@@ -85,7 +69,7 @@ class MTLEvaluator:
                 res = res[-1]
             if not (isinstance(res, dict) and "ground_truth" in res and "predictions" in res):
                 continue
-            cl = wrapper.cluster_assignments.get(subj, "None")
+            cl = wrapper.cluster_assignments.get(str(subj), "None")
             cluster_data.setdefault(cl, {"ground_truth": [], "predictions": []})
             cluster_data[cl]["ground_truth"].extend(res["ground_truth"])
             cluster_data[cl]["predictions"].extend(res["predictions"])
@@ -109,12 +93,13 @@ class MTLEvaluator:
                          if hasattr(self.baseline_wrapper, "results_by_subject") 
                          else self.baseline_wrapper)
         for subj, res in self.mtl_wrapper.results_by_subject.items():
+            subj_str = str(subj)
             if isinstance(res, list):
                 res = res[-1]
             if not (isinstance(res, dict) and "ground_truth" in res and "predictions" in res):
                 continue
             mtl_acc = accuracy_score(np.array(res["ground_truth"]), np.array(res["predictions"]))
-            baseline_res = baseline_dict.get(subj, None)
+            baseline_res = baseline_dict.get(subj_str, None)
             if baseline_res is None:
                 continue
             if isinstance(baseline_res, list):
@@ -122,11 +107,11 @@ class MTLEvaluator:
             if not (isinstance(baseline_res, dict) and "ground_truth" in baseline_res and "predictions" in baseline_res):
                 continue
             baseline_acc = accuracy_score(np.array(baseline_res["ground_truth"]), np.array(baseline_res["predictions"]))
-            cluster = (self.mtl_wrapper.cluster_assignments.get(subj, "Unknown")
+            cluster = (self.mtl_wrapper.cluster_assignments.get(subj_str, "Unknown")
                        if hasattr(self.mtl_wrapper, "cluster_assignments") else "Unknown")
             diff = mtl_acc - baseline_acc
             records.append({
-                "subject": subj,
+                "subject": subj_str,
                 "cluster": cluster,
                 "baseline_accuracy": baseline_acc,
                 "mtl_accuracy": mtl_acc,
@@ -134,6 +119,7 @@ class MTLEvaluator:
             })
         return pd.DataFrame(records)
 
+    # The plotting functions and evaluate() remain unchanged.
     def plot_confusion_matrix(self, cm, title, output_file):
         plt.figure(figsize=(8,6))
         ax = sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
@@ -165,7 +151,6 @@ class MTLEvaluator:
         print(f"Saved cluster comparison plot to {output_file}")
 
     def evaluate(self, verbose=True):
-        # Compute overall metrics.
         mtl_overall = self.compute_overall_metrics(self.mtl_wrapper)
         baseline_overall = self.compute_overall_metrics(self.baseline_wrapper)
         if verbose:
@@ -177,7 +162,6 @@ class MTLEvaluator:
             self.plot_confusion_matrix(mtl_overall["confusion_matrix"], "MTL Overall Confusion Matrix", "mtl_overall_cm.png")
             self.plot_confusion_matrix(baseline_overall["confusion_matrix"], "Baseline Overall Confusion Matrix", "baseline_overall_cm.png")
         
-        # Compute cluster-level metrics.
         mtl_cluster = self.compute_cluster_metrics(self.mtl_wrapper)
         baseline_cluster = self.compute_cluster_metrics(self.baseline_wrapper)
         if verbose:
@@ -190,7 +174,6 @@ class MTLEvaluator:
                                              f"Baseline Confusion Matrix - Cluster {cl}", f"baseline_cluster_{cl}_cm.png")
             self.plot_cluster_comparison(mtl_cluster, baseline_cluster)
         
-        # Compute subject-level metrics.
         try:
             subject_df = self.compute_subject_metrics()
             if verbose:
@@ -207,14 +190,15 @@ class MTLEvaluator:
         }
         return summary
 
+
 if __name__ == "__main__":
-    # Load evaluation configuration from config/mtl.yaml under the key 'evaluators'
+    from omegaconf import OmegaConf
+    import yaml
     config = OmegaConf.load("config/experiment/mtl.yaml")
     eval_config = config.experiment.evaluators
 
-    # Load the MTL and baseline results. They should be saved as MTLWrapper objects.
     mtl_results = MTLWrapper.load("mtl_training_results.pkl")
-    baseline_results = MTLWrapper.load("baseline_training_results.pkl")
+    baseline_results = MTLWrapper.load("./trained_models/pooled_baseline_results.pkl")
     
     evaluator = MTLEvaluator(mtl_results, baseline_results, eval_config)
     summary = evaluator.evaluate(verbose=True)

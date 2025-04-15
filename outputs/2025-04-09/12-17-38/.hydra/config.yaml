@@ -1,0 +1,12 @@
+pretrained_mtl_model: /home/ubuntu/VT2/pretrained_mtl_model_weights.pth
+preprocessed_data: /home/ubuntu/VT2/outputs/preprocessed_data.pkl
+subject: 1
+freeze_backbone: false
+epochs: 20
+lr: 0.001
+device: cpu
+out_dir: tl_outputs
+batch_size: 64
+model:
+  n_outputs: 4
+  n_clusters_pretrained: 8
