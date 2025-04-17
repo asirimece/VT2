@@ -5,13 +5,13 @@ experiment:
   clustering:
     method: "kmeans"
     kmeans:
-      n_clusters: 3
+      n_clusters: 4
       init: "k-means++"
       max_iter: 300
       n_init: 10
       random_state: 42
     hierarchical:
-      n_clusters: 3
+      n_clusters: 4
       linkage: "ward"
       affinity: "euclidean"
     dbscan:
