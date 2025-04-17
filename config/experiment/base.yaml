@@ -1,29 +1,33 @@
 experiment:
-  mode: "pooled"         # "single" or "pooled"
   device: "cuda"
 
   single:
-    n_runs: 5              
-    epochs: 200             
+    #n_runs: 3
+    n_runs: 1 # DEBUG
+    epochs: 1          # DEBUG
     batch_size: 64
     learning_rate: 0.0005
+    #batch_size: [32, 64, 128]       # Grid search values for batch size
+    #learning_rate: [0.0001, 0.0005, 0.001] 
     optimizer: "adam"      
     loss: "cross_entropy"  
     
   pooled:
-    n_runs: 5              
-    epochs: 200             
+    n_runs: 1      # DEBUG
+    epochs: 1         # DEBUG
     batch_size: 64
     learning_rate: 0.0005
+    #batch_size: [32, 64, 128]       # Grid search values for batch size
+    #learning_rate: [0.0001, 0.0005, 0.001] 
     optimizer: "adam"      
     loss: "cross_entropy"  
 
 data:
-  preprocessed_data_file: "./outputs/preprocessed_data.pkl"
+  preprocessed_data: "./dump/preprocessed_data.pkl"
 
 logging:
-  model_save_dir: "./trained_models"
-  results_save_path: "./trained_models/training_results.pkl"
+  single_results_path: "./dump/trained_models/single_subject_training.pkl"
+  pooled_results_path: "./dump/trained_models/pooled_training.pkl"
 
 evaluators:
   quantitative:
@@ -41,4 +45,5 @@ evaluators:
     tsne:
       perplexity: 30
       n_iter: 1000
-    output_dir: "./evaluation_plots"
+    output_dir: "./evaluation_plots/baseline"
+  

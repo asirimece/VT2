@@ -17,7 +17,13 @@ single:
   n_filters_spat: 25
   filter_time_length: 10
   pool_time_length: 3
-  pool_mode: "max"  # mean or max
+  pool_mode: "mean"  # mean or max
+  #drop_prob: [0.1, 0.25, 0.5]
+  #n_filters_time: [15, 25, 35]
+  #n_filters_spat: [15, 25, 35]
+  #filter_time_length: [5, 10, 15]
+  #pool_time_length: [2, 3, 4]
+  #pool_mode: ["max", "mean"]
 
 pooled:
   drop_prob: 0.25
@@ -26,3 +32,4 @@ pooled:
   filter_time_length: 10
   pool_time_length: 3
   pool_mode: "max"  # mean or max
+  

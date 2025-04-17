@@ -1,20 +1,6 @@
-"""
-pipeline.py
-
-This module defines a Preprocessor class that:
-1. Loadataset BNCI2014001 data using MOABB.
-2. Applies bandpass filtering.
-3. Optionally removes EOG artifacts using ICA.
-4. Creates macro epochs (e.g. [tmin_event, tmax_event] seconds).
-5. Applies sliding-window cropping to create sub-epochs.
-6. Optionally applies exponential moving standardization.
-7. Saves the resulting preprocessed data to disk.
-
-Usage:
-    preprocessor = Preprocessor(config)
-    results = preprocessor.run()
-"""
-
+import os
+from matplotlib import pyplot as plt
+import numpy as np
 import mne
 from moabb.datasets import BNCI2014_001
 from omegaconf import DictConfig
@@ -29,23 +15,14 @@ from lib.logging import logger
 
 logger = logger.get()
 
+
 class Preprocessor:
-    """
-    Run the complete preprocessing pipeline:
-    1. Load dataset using BNCI2014001.
-    2. For each subject, process train/test sessions:
-        - Apply bandpass filter, optionally remove EOG artifacts, and pick EEG channels.
-        - Create macro epochs from the raw data.
-        - Apply sliding-window cropping to get sub-epochs.
-        - Optionally apply exponential moving standardization.
-    3. Save and return the preprocessed data.
-    """
     def __init__(self, config: DictConfig):
-        self.config = config
-        self.dataset_config = config.dataset.preprocessing
+        self.config = config.dataset            
+        self.preproc_config = self.config.preprocessing 
 
     def run(self) -> dict:
-        # Load dataset from MOABB.
+        # Load the dataset via MOABB.
         dataset = BNCI2014_001()
         all_data = dataset.get_data()
         results = {}
@@ -53,44 +30,93 @@ class Preprocessor:
         for subj in sorted(all_data.keys()):
             logger.info(f"\n--- Subject: {subj} ---")
             subj_data = all_data[subj]
-            # Concatenate runs for train/test sessions
-            train_raw, test_raw = data_split_concatenate(subj_data, self.dataset_config.data_split.kwargs.train_session, self.dataset_config.data_split.kwargs.test_session)
-            for sess_label, raw in zip([self.dataset_config.data_split.kwargs.train_session, self.dataset_config.data_split.kwargs.test_session], [train_raw, test_raw]):
-                logger.info(f"Processing session: {sess_label}")
-                
-                # Bandpass filter
-                raw = bandpass_filter(raw, low=self.dataset_config.raw_preprocessors.bandpass_filter.kwargs.low, high=self.dataset_config.raw_preprocessors.bandpass_filter.kwargs.high, method=self.dataset_config.raw_preprocessors.bandpass_filter.kwargs.method)
-                
-                # Remove EOG artifacts
-                if self.dataset_config.remove_eog_artifacts:
-                    raw = remove_eog_artifacts_ica(
-                        raw, 
-                        eog_ch=self.config.dataset.eog_channels,
-                        n_components=22, 
-                        method='fastica',
-                        random_state=42, 
-                        show_ica_plots=False,
-                        save_ica_plots=False
-                    )
-                
-                # Pick EEG channels only
-                raw.pick_types(eeg=True, stim=False, exclude=[])
-                
-                # Create macro epochs
-                macro_epochs = create_macro_epochs(raw, self.dataset_config)
-                logger.info(f"  Created macro epochs: shape={macro_epochs.get_data().shape}, tmin={macro_epochs.tmin}, tmax={macro_epochs.tmax}")
-                
-                # Apply sliding-window cropping to get sub-epochs
-                sub_epochs = crop_subepochs(macro_epochs, self.dataset_config.epoching.kwargs.crop_window_length, self.dataset_config.epoching.kwargs.crop_step_size)
-                logger.info(f"  After sliding, sub-epochs shape: {sub_epochs.get_data().shape}, tmin={sub_epochs.tmin}, tmax={sub_epochs.tmax}")
-                
-                # Apply exponential moving standardization.
-                sub_epochs = exponential_moving_standardization(sub_epochs, smoothing_factor=self.dataset_config.exponential_moving_standardization.kwargs.smoothing_factor)
-                logger.info(f"  Applied exponential moving standardization on session: {sess_label}")
-                
-                # Store subepochs
-                if subj not in results:
-                    results[subj] = {}
-                results[subj][sess_label] = sub_epochs
+            train_session = self.preproc_config.data_split.kwargs.train_session
+            test_session = self.preproc_config.data_split.kwargs.test_session
+
+            train_raw, test_raw = data_split_concatenate(subj_data, train_session, test_session)
+
+            # Process training session
+            logger.info(f"Processing training session: {train_session}")
+            train_raw = bandpass_filter(
+                train_raw,
+                low=self.preproc_config.raw_preprocessors.bandpass_filter.kwargs.low,
+                high=self.preproc_config.raw_preprocessors.bandpass_filter.kwargs.high,
+                method=self.preproc_config.raw_preprocessors.bandpass_filter.kwargs.method
+            )
+
+            if self.preproc_config.remove_eog_artifacts:
+                train_raw = remove_eog_artifacts_ica(
+                    train_raw,
+                    eog_ch=self.config.eog_channels,
+                    n_components=self.preproc_config.ica.kwargs.n_components,
+                    method=self.preproc_config.ica.kwargs.method,
+                    random_state=self.preproc_config.ica.kwargs.random_state,
+                    show_ica_plots=self.preproc_config.show_ica_plots,
+                    save_ica_plots=self.preproc_config.save_ica_plots,
+                    plots_output_dir=self.preproc_config.ica_plots_dir
+                )
+
+            # Select only EEG channels.
+            train_raw.pick_types(eeg=True, stim=False, exclude=[])
+            train_macro_epochs = create_macro_epochs(train_raw, self.preproc_config)
+            logger.info(f"Macro epochs: shape={train_macro_epochs.get_data().shape}, tmin={train_macro_epochs.tmin}, tmax={train_macro_epochs.tmax}")
+            train_sub_epochs = crop_subepochs(
+                train_macro_epochs,
+                self.preproc_config.epoching.kwargs.crop_window_length,
+                self.preproc_config.epoching.kwargs.crop_step_size
+            )
+            logger.info(f"Sub-epochs: shape={train_sub_epochs.get_data().shape}")
+
+            standardized_train, esm_params = exponential_moving_standardization(
+                train_sub_epochs,
+                smoothing_factor=self.preproc_config.exponential_moving_standardization.kwargs.smoothing_factor,
+                eps=self.preproc_config.exponential_moving_standardization.kwargs.eps,
+                return_params=True
+            )
+            logger.info("Applied ESM on training data and extracted parameters.")
+
+            # Process test session
+            logger.info(f"Processing test session: {test_session}")
+            test_raw = bandpass_filter(
+                test_raw,
+                low=self.preproc_config.raw_preprocessors.bandpass_filter.kwargs.low,
+                high=self.preproc_config.raw_preprocessors.bandpass_filter.kwargs.high,
+                method=self.preproc_config.raw_preprocessors.bandpass_filter.kwargs.method
+            )
+
+            if self.preproc_config.remove_eog_artifacts:
+                test_raw = remove_eog_artifacts_ica(
+                    test_raw,
+                    eog_ch=self.config.eog_channels,
+                    n_components=self.preproc_config.ica.kwargs.n_components,
+                    method=self.preproc_config.ica.kwargs.method,
+                    random_state=self.preproc_config.ica.kwargs.random_state,
+                    show_ica_plots=self.preproc_config.show_ica_plots,
+                    save_ica_plots=self.preproc_config.save_ica_plots,
+                    plots_output_dir=self.preproc_config.ica_plots_dir
+                )
+
+            test_raw.pick_types(eeg=True, stim=False, exclude=[])
+            test_macro_epochs = create_macro_epochs(test_raw, self.preproc_config)
+            logger.info(f"Test macro epochs: shape={test_macro_epochs.get_data().shape}, tmin={test_macro_epochs.tmin}, tmax={test_macro_epochs.tmax}")
+            test_sub_epochs = crop_subepochs(
+                test_macro_epochs,
+                self.preproc_config.epoching.kwargs.crop_window_length,
+                self.preproc_config.epoching.kwargs.crop_step_size
+            )
+            logger.info(f"Test sub-epochs: shape={test_sub_epochs.get_data().shape}")
+
+            standardized_test = exponential_moving_standardization(
+                test_sub_epochs,
+                smoothing_factor=self.preproc_config.exponential_moving_standardization.kwargs.smoothing_factor,
+                eps=self.preproc_config.exponential_moving_standardization.kwargs.eps,
+                esm_params=esm_params
+            )
+            logger.info("Applied ESM on test data using training parameters.")
+            
+            results[subj] = {
+                train_session: standardized_train,
+                test_session: standardized_test
+            }
 
         return results

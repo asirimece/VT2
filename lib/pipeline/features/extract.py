@@ -1,125 +1,219 @@
+# lib/pipeline/features/extract.py
+
 import numpy as np
-from lib.logging import logger
 import mne
 from mne.decoding import CSP
 from pyriemann.estimation import Covariances
 from pyriemann.tangentspace import TangentSpace
+from sklearn.preprocessing import StandardScaler
+import pickle
+from lib.logging import logger
+from omegaconf import DictConfig
+
+# for global transforms
+from sklearn.decomposition import PCA
+from sklearn.svm import SVC
+from sklearn.feature_selection import RFECV
 
 logger = logger.get()
 
+
 class FeatureExtractor:
-    def __init__(self, config):
-        self.config = config
-    
+    def __init__(self, feat_cfg: DictConfig):
+        # feat_cfg is the 'transform.feature_extraction' node from your Hydra config
+        self.config = feat_cfg
+
     def extract_erd_ers(self, epochs):
-        config = self.config.feature_extraction
-        kwargs = config.methods[0].get('kwargs', {}) if config.methods else {}
+        kwargs = self.config.methods[0].get('kwargs', {}) if self.config.methods else {}
         baseline_window = kwargs.get('baseline_window', [0.0, 0.5])
         analysis_window = kwargs.get('analysis_window', [0.5, 4.0])
         frequency_bands = kwargs.get('frequency_bands', {'mu': [8, 12], 'beta': [13, 30]})
-        
+
         sfreq = epochs.info['sfreq']
         times = epochs.times
-        data = epochs.get_data()
-        tmin, tmax = times[0], times[-1]
-        
+        data = epochs.get_data().astype(np.float64)
+
         def time_to_index(sec):
-            sec_clamped = np.clip(sec, tmin, tmax)
+            sec_clamped = np.clip(sec, times[0], times[-1])
             return np.searchsorted(times, sec_clamped)
-        
-        b_start_idx = time_to_index(baseline_window[0])
-        b_end_idx = time_to_index(baseline_window[1])
-        a_start_idx = time_to_index(analysis_window[0])
-        a_end_idx = time_to_index(analysis_window[1])
-        
+
+        b_start = time_to_index(baseline_window[0])
+        b_end   = time_to_index(baseline_window[1])
+        a_start = time_to_index(analysis_window[0])
+        a_end   = time_to_index(analysis_window[1])
+
         n_epochs = data.shape[0]
         n_bands = len(frequency_bands)
-        erd_ers_features = np.zeros((n_epochs, n_bands))
+        features = np.zeros((n_epochs, n_bands))
         band_names = list(frequency_bands.keys())
-        
-        for b_idx, band_name in enumerate(band_names):
-            low_f, high_f = frequency_bands[band_name]
-            data_band = data.copy()
+
+        for i, band in enumerate(band_names):
+            low, high = frequency_bands[band]
+            band_data = data.copy()
             for ep in range(n_epochs):
-                data_band[ep] = mne.filter.filter_data(data_band[ep], sfreq=sfreq,
-                                                       l_freq=low_f, h_freq=high_f, verbose=False)
-            baseline_power = np.mean(data_band[:, :, b_start_idx:b_end_idx] ** 2, axis=(1, 2))
-            analysis_power = np.mean(data_band[:, :, a_start_idx:a_end_idx] ** 2, axis=(1, 2))
+                band_data[ep] = mne.filter.filter_data(
+                    band_data[ep], sfreq=sfreq,
+                    l_freq=low, h_freq=high, verbose=False
+                )
+            baseline_power = np.mean(band_data[:, :, b_start:b_end] ** 2, axis=(1,2))
+            analysis_power = np.mean(band_data[:, :, a_start:a_end] ** 2, axis=(1,2))
             baseline_power = np.maximum(baseline_power, 1e-12)
-            erd_ers_features[:, b_idx] = ((analysis_power - baseline_power) / baseline_power) * 100.0
-        return erd_ers_features
+            features[:, i] = (analysis_power - baseline_power) / baseline_power * 100.0
+
+        return features
 
     def extract_csp(self, epochs):
-        kwargs = self.config.feature_extraction.methods[0].get('kwargs', {}) if self.config.feature_extraction.methods else {}
-        frequency_band = kwargs.get('frequency_band', [8, 30])
-        n_components = kwargs.get('n_components', 4)
+        kwargs = self.config.methods[0].get('kwargs', {}) if self.config.methods else {}
+        n_comp = kwargs.get('n_components', 4)
         labels = epochs.events[:, -1]
+        data = epochs.get_data().astype(np.float64)
+
         if len(np.unique(labels)) < 2:
             raise ValueError("CSP requires at least 2 classes.")
-        data = epochs.get_data()
-        csp = CSP(n_components=n_components, reg=None, norm_trace=False)
-        csp_features = csp.fit_transform(data, labels)
-        return csp_features
+
+        csp = CSP(n_components=n_comp, reg=None, norm_trace=False)
+        return csp.fit_transform(data, labels)
 
     def extract_fbcsp(self, epochs):
-        kwargs = self.config.feature_extraction.methods[0].get('kwargs', {}) if self.config.feature_extraction.methods else {}
+        kwargs = self.config.methods[0].get('kwargs', {}) if self.config.methods else {}
         freq_bands = kwargs.get('frequency_bands', [[4, 8], [8, 12], [12, 16]])
-        n_components_per_band = kwargs.get('n_components_per_band', 2)
+        n_per_band = kwargs.get('n_components_per_band', 2)
         sfreq = epochs.info['sfreq']
         labels = epochs.events[:, -1]
-        raw_data = epochs.get_data()
-        all_features = []
-        for (low_f, high_f) in freq_bands:
-            data_band = raw_data.copy()
-            n_epochs = data_band.shape[0]
-            for ep in range(n_epochs):
-                data_band[ep] = mne.filter.filter_data(data_band[ep], sfreq=sfreq,
-                                                       l_freq=low_f, h_freq=high_f, verbose=False)
-            csp = CSP(n_components=n_components_per_band, norm_trace=False)
-            feats = csp.fit_transform(data_band, labels)
-            all_features.append(feats)
-        fbcsp_features = np.concatenate(all_features, axis=1)
-        return fbcsp_features
+        raw_data = epochs.get_data().astype(np.float64)
+
+        all_feats = []
+        for low, high in freq_bands:
+            band_data = raw_data.copy()
+            for ep in range(band_data.shape[0]):
+                band_data[ep] = mne.filter.filter_data(
+                    band_data[ep], sfreq=sfreq,
+                    l_freq=low, h_freq=high, verbose=False
+                )
+            csp = CSP(n_components=n_per_band, norm_trace=False)
+            all_feats.append(csp.fit_transform(band_data, labels))
+
+        return np.concatenate(all_feats, axis=1)
 
     def extract_riemannian(self, epochs):
-        kwargs = self.config.feature_extraction.methods[0].get('kwargs', {}) if self.config.feature_extraction.methods else {}
+        kwargs = self.config.methods[1].get('kwargs', {}) if len(self.config.methods) > 1 else {}
         estimator = kwargs.get('estimator', 'oas')
         mapping = kwargs.get('mapping', 'tangent')
-        data = epochs.get_data()
-        cov_estimator = Covariances(estimator=estimator)
-        cov_mats = cov_estimator.fit_transform(data)
-        if mapping == "tangent":
-            ts = TangentSpace()
-            riemann_features = ts.fit_transform(cov_mats)
-        else:
-            n_epochs = cov_mats.shape[0]
-            tri_indices = np.triu_indices(cov_mats.shape[1])
-            n_features = len(tri_indices[0])
-            riemann_features = np.zeros((n_epochs, n_features))
-            for i in range(n_epochs):
-                riemann_features[i, :] = cov_mats[i][tri_indices]
-        return riemann_features
 
-    def run(self, epochs):
+        data = epochs.get_data().astype(np.float64)
+        cov = Covariances(estimator=estimator)
+        mats = cov.fit_transform(data)
+
+        if mapping == 'tangent':
+            ts = TangentSpace()
+            return ts.fit_transform(mats)
+        else:
+            n_ep, n_ch, _ = mats.shape
+            tri_idx = np.triu_indices(n_ch)
+            feats = np.zeros((n_ep, len(tri_idx[0])))
+            for i in range(n_ep):
+                feats[i] = mats[i][tri_idx]
+            return feats
+
+    def feature_extraction(self, epochs):
         """
-        Execute all configured feature extraction methods.
-        Returns a dictionary with method names as keys and feature matrices as values.
+        Extract and concatenate raw features (FBCSP + Riemannian) per epoch.
+        Returns X_raw (n_epochs, D_raw) and y (n_epochs,)
         """
-        if not hasattr(self.config.feature_extraction, "methods") or not self.config.feature_extraction.methods:
-            print("No feature extraction methods configured. Returning empty dict.")
-            return {}
-        
-        feature_dict = {}
-        for method_config in self.config.feature_extraction.methods:
-            method_name = method_config['name']
-            if method_name == 'erd_ers':
-                feature_dict['erd_ers'] = self.extract_erd_ers(epochs)
-            elif method_name == 'csp':
-                feature_dict['csp'] = self.extract_csp(epochs)
-            elif method_name == 'fbcsp':
-                feature_dict['fbcsp'] = self.extract_fbcsp(epochs)
-            elif method_name == 'riemannian':
-                feature_dict['riemannian'] = self.extract_riemannian(epochs)
+        feats = []
+        for m in self.config.methods:
+            if m['name'] == 'fbcsp':
+                feats.append(self.extract_fbcsp(epochs))
+            elif m['name'] == 'riemannian':
+                feats.append(self.extract_riemannian(epochs))
             else:
-                logger.warning(f"Unrecognized feature extraction method '{method_name}'.")
-        return feature_dict
+                logger.warning(f"Unsupported method {m['name']}")
+
+        # scale each block separately, then concatenate
+        scaler = StandardScaler()
+        normed = [scaler.fit_transform(f) for f in feats]
+        combined = np.concatenate(normed, axis=1)
+
+        labels = epochs.events[:, -1]
+        return combined, labels
+
+    @staticmethod
+    def run(config: DictConfig, preprocessed_data):
+        """
+        Full pipeline: extract raw, optional PCA, global RFECV on train, transform all.
+        Returns nested dict of selected features and labels.
+        """
+        feat_cfg = config.transform.feature_extraction
+        extractor = FeatureExtractor(feat_cfg)
+
+        # STEP 1: extract raw features for all
+        raw_feats = {}
+        for subj, sessions in preprocessed_data.items():
+            raw_feats[subj] = {}
+            for sess_label, epochs in sessions.items():
+                logger.info(f"Extracting raw features for subject {subj}, session {sess_label}")
+                X_raw, y = extractor.feature_extraction(epochs)
+                raw_feats[subj][sess_label] = {"combined": X_raw, "labels": y}
+
+        # STEP 2: pool train data for global transforms
+        X_train_list, y_train_list = [], []
+        for subj, sessions in raw_feats.items():
+            for sess_label, d in sessions.items():
+                if sess_label.endswith("train"):
+                    X_train_list.append(d["combined"])
+                    y_train_list.append(d["labels"])
+        X_pool = np.vstack(X_train_list)
+        y_pool = np.concatenate(y_train_list)
+
+        # STEP 3: optional PCA check
+        D_pool = X_pool.shape[1]
+        pca_cfg = getattr(config.transform, 'dimensionality_reduction', None)
+        threshold = getattr(pca_cfg, 'threshold', 300) if pca_cfg else 300
+        if D_pool > threshold or pca_cfg is not None:
+            if pca_cfg and 'n_components' in pca_cfg.kwargs:
+                n_comp = pca_cfg.kwargs.n_components
+                pca = PCA(n_components=n_comp)
+                logger.info(f"PCA: reducing {D_pool} → {n_comp}")
+            else:
+                var = pca_cfg.kwargs.get('explained_variance', 0.95) if pca_cfg else 0.95
+                pca = PCA(n_components=var)
+                logger.info(f"PCA: reducing {D_pool} to {int(var*100)}% variance")
+            pca.fit(X_pool)
+            X_pool = pca.transform(X_pool)
+            for subj, sessions in raw_feats.items():
+                for label, d in sessions.items():
+                    d['combined'] = pca.transform(d['combined'])
+        else:
+            logger.info(f"Skipping PCA: {D_pool} dims <= {threshold}")
+
+        # STEP 4: global RFECV on train
+        fs_cfg = config.transform.feature_selection.kwargs
+        svc = SVC(kernel='linear', C=fs_cfg.get('svc_C', 1.0), random_state=42)
+        rfecv = RFECV(
+            estimator=svc,
+            step=fs_cfg.get('step', 5),
+            cv=fs_cfg.get('cv', 3),
+            scoring=fs_cfg.get('scoring', 'accuracy'),
+            min_features_to_select=fs_cfg.get('min_features_to_select', 1),
+            n_jobs=-1
+        )
+        logger.info(f"Fitting RFECV on pooled train: {X_pool.shape} \n This will take a while!")
+        rfecv.fit(X_pool, y_pool)
+        logger.info(f"RFECV complete: {rfecv.n_features_} features selected")
+
+        # STEP 5: apply RFECV to all sessions
+        selected = {}
+        for subj, sessions in raw_feats.items():
+            selected[subj] = {}
+            for label, d in sessions.items():
+                X_sel = rfecv.transform(d['combined'])
+                selected[subj][label] = {"combined": X_sel, "labels": d['labels']}
+
+        return selected
+
+
+def save_features(features, filename):
+    """Save the features dict to disk as pickle"""
+    with open(filename, 'wb') as f:
+        pickle.dump(features, f)
+    print(f"Features saved to {filename}")

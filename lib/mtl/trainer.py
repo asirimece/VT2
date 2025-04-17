@@ -82,7 +82,7 @@ class EEGMultiTaskDataset(Dataset):
         cluster_id = self.cluster_wrapper.get_cluster_for_subject(subject_id)
         return sample, label, subject_id, cluster_id
 
-def train_mtl_model(model, dataloader, criterion, optimizer, device, num_epochs=100):
+def train_mtl_model(model, dataloader, criterion, optimizer, device, num_epochs=100, lambda_bias=0.001):
     model.to(device)
     for epoch in range(num_epochs):
         model.train()
@@ -100,6 +100,13 @@ def train_mtl_model(model, dataloader, criterion, optimizer, device, num_epochs=
             optimizer.zero_grad()
             outputs = model(data, cluster_ids)
             loss = criterion(outputs, labels)
+            
+            bias_penalty = 0.0
+            for head in model.heads.values():
+                if head.bias is not None:
+                    bias_penalty += torch.sum(head.bias ** 2)
+            loss_total = loss + lambda_bias * bias_penalty
+            
             loss.backward()
             optimizer.step()
 

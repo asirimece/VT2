@@ -135,14 +135,7 @@ def run_feature_extraction_stage(cfg, preprocessed_data):
             features[subj][sess_label] = feat_result
             print(f"Extracted and combined features for subject {subj}, session {sess_label}")
     return features
-"""def save_final_data(final_data, filename="./outputs/preprocessed_data.pkl"):
-    out_dir = os.path.dirname(filename)
-    if out_dir and not os.path.exists(out_dir):
-        os.makedirs(out_dir, exist_ok=True)
-    with open(filename, "wb") as f:
-        pickle.dump(final_data, f)
-    print(f"Final preprocessed data (after feature selection) saved to {filename}")
-    """
+
 def run_pipeline(cfg):
     preprocessed_data = run_preprocessing(cfg)
     features = run_feature_extraction_stage(cfg, preprocessed_data)

@@ -3,16 +3,16 @@
 trainer.py
 
 Defines a Trainer class that loads configuration and preprocessed data,
-trains Deep4Net subject-by-subject (in "single" mode) or pooled across subjects (in "pooled" mode),
+trains Deep4Net for both single (subject-by-subject) and pooled across subjects,
 aggregates trial-level predictions, wraps the results in a BaseWrapper object,
-and saves these results to a file.
-These results are then used by the evaluator.
+and saves these results to files.
 Usage:
     python trainer.py
 """
 
 import os
 import pickle
+import copy
 import numpy as np
 import torch
 import torch.nn as nn
@@ -36,16 +36,15 @@ class BaseWrapper:
     """
     Container for wrapping training results.
     """
-    def __init__(self, results_by_subject):
+    def __init__(self, results_by_experiment):
         """
-        results_by_subject: dict mapping subject id (or 'pooled') to a dict containing at least:
-            - "ground_truth": array of true labels per trial,
-            - "predictions": array of predicted labels per trial.
+        results_by_experiment: dict with keys for each experiment type ("single" and "pooled")
+         mapping to their respective results.
         """
-        self.results_by_subject = results_by_subject
+        self.results_by_experiment = results_by_experiment
 
-    def get_subject_results(self, subject):
-        return self.results_by_subject.get(subject)
+    def get_experiment_results(self, key):
+        return self.results_by_experiment.get(key)
 
 
 class BaselineTrainer:
@@ -61,20 +60,19 @@ class BaselineTrainer:
         
         # Read the experiment configuration.
         exp_config = self.base_config.experiment
-        self.mode = exp_config.mode.lower()  # "pooled" or "single"
         self.device = exp_config.device
         
-        # Choose training configuration based on mode.
-        if self.mode == "pooled":
-            self.train_config = exp_config.pooled
-        else:
-            self.train_config = exp_config.single
+        # Store both the single and pooled training configurations.
+        self.single_train_config = exp_config.single
+        self.pooled_train_config = exp_config.pooled
 
-        self.results_save_path = self.base_config.logging.results_save_path
+        # Read saving paths from the configuration.
+        self.single_results_path = self.base_config.logging.single_results_path
+        self.pooled_results_path = self.base_config.logging.pooled_results_path
 
-        # Load preprocessed data file as specified in the configuration.
-        preprocessed_data_file = self.base_config.data.preprocessed_data_file
-        with open(preprocessed_data_file, "rb") as f:
+        # Load preprocessed data as specified in the configuration.
+        preprocessed_data = self.base_config.data.preprocessed_data
+        with open(preprocessed_data, "rb") as f:
             self.preprocessed_data = pickle.load(f)
         print(f"[DEBUG] Loaded preprocessed data for {len(self.preprocessed_data)} subject(s).")
         print(f"[DEBUG] Subject keys: {list(self.preprocessed_data.keys())}")
@@ -108,10 +106,11 @@ class BaselineTrainer:
         print("  - y_train distribution:", np.bincount(y_train.astype(int)))
         print("  - y_test distribution:", np.bincount(y_test.astype(int)))
         
-        # Instantiate the model via the OO class.
+        # Instantiate the model using the merged configuration.
         model_instance = Deep4NetModel(model_config)
         model = model_instance.get_model().to(device)
         print(f"[DEBUG]  - Built Deep4Net on device: {device}")
+        print(f"[DEBUG]  - Model parameters: {model_config}")
         
         train_dataset = EEGDataset(X_train, y_train, trial_ids_train)
         test_dataset  = EEGDataset(X_test, y_test, trial_ids_test)
@@ -167,17 +166,15 @@ class BaselineTrainer:
         trial_logits = np.array(trial_logits)
         trial_preds = trial_logits.argmax(axis=1)
         
-        from sklearn.metrics import accuracy_score, cohen_kappa_score, confusion_matrix
         acc = accuracy_score(trial_labels, trial_preds)
         kappa = cohen_kappa_score(trial_labels, trial_preds)
         cm = confusion_matrix(trial_labels, trial_preds)
         logger.info(f"  - Trial-level Test Accuracy: {acc:.4f}, Kappa: {kappa:.4f}")
-        logger.info("  - Confusion Matrix:\n", cm)
+        logger.info("  - Confusion Matrix:\n%s", cm)
         
         trial_results = {
             "ground_truth": trial_labels,
             "predictions": trial_preds,
-            # "probabilities": probabilities,  # Add if computed.
         }
         return model, trial_results
 
@@ -187,10 +184,10 @@ class BaselineTrainer:
         """
         print(f"\n=== Training Subject {subj} ===")
         train_ep = subject_data["0train"]
-        print(f"DEBUG--- TRAIN_EP: {train_ep}")
+        print(f"[DEBUG] TRAIN_EP: {train_ep}")
         
         test_ep  = subject_data["1test"]
-        print(f"DEBUG--- TEST_EP: {test_ep}")
+        print(f"[DEBUG] TEST_EP: {test_ep}")
         
         print("[DEBUG] train_ep.events[:10] =\n", train_ep.events[:10])
         print("[DEBUG] test_ep.events[:10]  =\n", test_ep.events[:10])
@@ -198,8 +195,8 @@ class BaselineTrainer:
         self.save_epochs_preview_plot(test_ep, subj_id=subj, label="test")
         
         X_train = train_ep.get_data()
-        y_train = train_ep.events[:, -1]   # labels from column 3
-        tid_tr  = train_ep.events[:, 1]     # trial IDs from column 2
+        y_train = train_ep.events[:, -1]
+        tid_tr  = train_ep.events[:, 1]
         
         X_test  = test_ep.get_data()
         y_test  = test_ep.events[:, -1]
@@ -211,77 +208,98 @@ class BaselineTrainer:
         print("[DEBUG] Unique labels in train_ep:", np.unique(y_train))
         print("[DEBUG] Unique trial IDs in train_ep:", np.unique(tid_tr))
         
+        # Inline merge of model parameters for the single experiment.
+        common_config = {key: self.model_config[key] for key in ["name", "in_chans", "n_classes", "n_times", "final_conv_length"] if key in self.model_config}
+        exp_specific = self.model_config.get("single", {})  # Get experiment-specific parameters.
+        merged_model_config = {**common_config, **exp_specific}
+        print(f"[DEBUG] Model configuration for 'single': {merged_model_config}")
+        
         run_results = []
-        for run_i in range(self.train_config.n_runs):
-            print(f"\n[DEBUG] [Run {run_i+1}/{self.train_config.n_runs}] for Subject {subj}")
+        for run_i in range(self.single_train_config.n_runs):
+            print(f"\n[DEBUG] [Run {run_i+1}/{self.single_train_config.n_runs}] for Subject {subj}")
             _, trial_results = self.train_deep4net_model(
                 X_train, y_train, tid_tr,
                 X_test, y_test, tid_te,
-                self.model_config, self.train_config, device=self.device
+                merged_model_config, self.single_train_config, device=self.device
             )
             run_results.append(trial_results)
-        # For simplicity, use the last run's results.
         return run_results[-1]
 
     def run(self):
         """
-        Trains the model either in "single" (subject-level) mode or "pooled" mode.
-        In "single" mode, each subject is trained separately.
-        In "pooled" mode, data from all subjects are concatenated and a single model is trained.
-        Returns a BaseWrapper object.
+        Trains the model for both single-subject and pooled experiments.
+        Returns a BaseWrapper object containing results for both experiments.
         """
-        results_all_subjects = {}
-        mode = self.mode
-        print(f"[DEBUG] Training mode: {mode}")
+        all_results = {}
         
-        if mode == "pooled":
-            # Pool training and test data across subjects.
-            X_train_pool, y_train_pool, tid_train_pool = [], [], []
-            X_test_pool, y_test_pool, tid_test_pool = [], [], []
-            # Use enumeration to generate a unique offset for each subject.
-            for subj_index, subj in enumerate(sorted(self.preprocessed_data.keys())):
-                subject_data = self.preprocessed_data[subj]
-                train_ep = subject_data["0train"]
-                test_ep  = subject_data["1test"]
-                # Add an offset to trial IDs to make them globally unique.
-                offset = subj_index * 2000  # Assumes each subject has fewer than 2000 trials.
-                X_train_pool.append(train_ep.get_data())
-                y_train_pool.append(train_ep.events[:, -1])
-                tid_train_pool.append(train_ep.events[:, 1] + offset)
-                X_test_pool.append(test_ep.get_data())
-                y_test_pool.append(test_ep.events[:, -1])
-                tid_test_pool.append(test_ep.events[:, 1] + offset)
-            X_train_pool = np.concatenate(X_train_pool, axis=0)
-            y_train_pool = np.concatenate(y_train_pool, axis=0)
-            tid_train_pool = np.concatenate(tid_train_pool, axis=0)
-            X_test_pool = np.concatenate(X_test_pool, axis=0)
-            y_test_pool = np.concatenate(y_test_pool, axis=0)
-            tid_test_pool = np.concatenate(tid_test_pool, axis=0)
-            
-            pool_run_results = []
-            for run_i in range(self.train_config.n_runs):
-                print(f"\n[DEBUG] [Run {run_i+1}/{self.train_config.n_runs}] for Pooled Training")
-                _, trial_results = self.train_deep4net_model(
-                    X_train_pool, y_train_pool, tid_train_pool,
-                    X_test_pool, y_test_pool, tid_test_pool,
-                    self.model_config, self.train_config, device=self.device
-                )
-                pool_run_results.append(trial_results)
-            # For simplicity, use the last run's pooled results.
-            results_all_subjects["pooled"] = pool_run_results[-1]
-        else:  # "single" mode
-            for subj in sorted(self.preprocessed_data.keys()):
-                subject_data = self.preprocessed_data[subj]
-                trial_results = self.train_subject(subj, subject_data)
-                results_all_subjects[subj] = trial_results
-                print(f"[DEBUG] Subject {subj} training complete.")
+        # --- Single-Subject Training ---
+        print("[DEBUG] Running single-subject experiments...")
+        single_results = {}
+        for subj in sorted(self.preprocessed_data.keys()):
+            subject_data = self.preprocessed_data[subj]
+            trial_results = self.train_subject(subj, subject_data)
+            single_results[subj] = trial_results
+            print(f"[DEBUG] Subject {subj} training complete.")
         
-        training_results = BaseWrapper(results_all_subjects)
+        # Save single-subject results using the config-defined path.
+        os.makedirs(os.path.dirname(self.single_results_path), exist_ok=True)
+        with open(self.single_results_path, "wb") as f:
+            pickle.dump(single_results, f)
+        print(f"[DEBUG] Single-subject training results saved to {self.single_results_path}")
+        all_results["single"] = single_results
         
-        # Save the training results using the configured path.
-        os.makedirs(os.path.dirname(self.results_save_path), exist_ok=True)
-        with open(self.results_save_path, "wb") as f:
-            pickle.dump(training_results, f)
-        print(f"[DEBUG] Training results saved to {self.results_save_path}")
+        # --- Pooled Training ---
+        print("[DEBUG] Running pooled experiment...")
+        # Inline merge of model parameters for the pooled experiment.
+        common_config = {key: self.model_config[key] for key in ["name", "in_chans", "n_classes", "n_times", "final_conv_length"] if key in self.model_config}
+        exp_specific = self.model_config.get("pooled", {})
+        merged_model_config = {**common_config, **exp_specific}
+        print(f"[DEBUG] Model configuration for 'pooled': {merged_model_config}")
         
+        # Merge data from all subjects.
+        X_train_pool, y_train_pool, tid_train_pool = [], [], []
+        X_test_pool, y_test_pool, tid_test_pool = [], [], []
+        for subj_index, subj in enumerate(sorted(self.preprocessed_data.keys())):
+            subject_data = self.preprocessed_data[subj]
+            train_ep = subject_data["0train"]
+            test_ep  = subject_data["1test"]
+            offset = subj_index * 2000  # Create a unique offset for trial IDs.
+            X_train_pool.append(train_ep.get_data())
+            y_train_pool.append(train_ep.events[:, -1])
+            tid_train_pool.append(train_ep.events[:, 1] + offset)
+            X_test_pool.append(test_ep.get_data())
+            y_test_pool.append(test_ep.events[:, -1])
+            tid_test_pool.append(test_ep.events[:, 1] + offset)
+        X_train_pool = np.concatenate(X_train_pool, axis=0)
+        y_train_pool = np.concatenate(y_train_pool, axis=0)
+        tid_train_pool = np.concatenate(tid_train_pool, axis=0)
+        X_test_pool = np.concatenate(X_test_pool, axis=0)
+        y_test_pool = np.concatenate(y_test_pool, axis=0)
+        tid_test_pool = np.concatenate(tid_test_pool, axis=0)
+        
+        pool_run_results = []
+        for run_i in range(self.pooled_train_config.n_runs):
+            print(f"\n[DEBUG] [Run {run_i+1}/{self.pooled_train_config.n_runs}] for Pooled Training")
+            _, trial_results = self.train_deep4net_model(
+                X_train_pool, y_train_pool, tid_train_pool,
+                X_test_pool, y_test_pool, tid_test_pool,
+                merged_model_config, self.pooled_train_config, device=self.device
+            )
+            pool_run_results.append(trial_results)
+        
+        pooled_results = pool_run_results[-1]
+        all_results["pooled"] = pooled_results
+        
+        # Save pooled results using the config-defined path.
+        os.makedirs(os.path.dirname(self.pooled_results_path), exist_ok=True)
+        with open(self.pooled_results_path, "wb") as f:
+            pickle.dump(pooled_results, f)
+        print(f"[DEBUG] Pooled training results saved to {self.pooled_results_path}")
+        
+        # Wrap overall results in a BaseWrapper.
+        training_results = BaseWrapper(all_results)
         return training_results
+
+if __name__ == "__main__":
+    trainer = BaselineTrainer()
+    trainer.run()

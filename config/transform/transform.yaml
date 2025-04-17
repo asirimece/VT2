@@ -31,29 +31,31 @@ feature_extraction:
         estimator: "oas"
         mapping: "tangent"
   
-  #dimensionality_reduction:
-    #name: pca
-    #kwargs:
-      #explained_variance: 0.95
-  
-  feature_selection:
-    #name: lasso
-    #kwargs:
-      #alpha: 0.01
-
-    #name: elasticnet
-    #kwargs:
-      #alphas: [0.001, 0.01, 0.1, 1.0, 10.0]
-      #l1_ratios: [0.1, 0.5, 0.9]
-      #cv: 5
-      #scoring: neg_mean_squared_error
-
-    name: rfecv
+  dimensionality_reduction:
+    name: pca
     kwargs:
-      step: 1
-      cv: 5
-      scoring: accuracy
-      min_features_to_select: 1
-      param_grid:
-        estimator__C: [0.1, 1.0, 10.0] 
+      explained_variance: 0.95
+
+feature_selection:
+  #name: lasso
+  #kwargs:
+    #alpha: 0.01
+
+  #name: elasticnet
+  #kwargs:
+    #alphas: [0.001, 0.01, 0.1, 1.0, 10.0]
+    #l1_ratios: [0.1, 0.5, 0.9]
+    #cv: 5
+    #scoring: neg_mean_squared_error
+
+  name: rfecv
+  kwargs:
+    step: 30
+    cv: 3
+    scoring: accuracy
+    min_features_to_select: 10
+    #param_grid:
+      #estimator__C: [0.1, 1.0, 10.0] 
+    svc_C: 1.0  # the C parameter for the internal linear SVC.
         
+output_file: "./dump/features.pkl"

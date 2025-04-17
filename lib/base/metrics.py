@@ -8,6 +8,7 @@ class MetricsEvaluator:
         """
         self.config = config
         self.metrics = config.get("metrics", [])
+        print("[DEBUG] MetricsEvaluator: Using metrics:", self.metrics)
     
     def evaluate(self, ground_truth, predictions, probabilities=None):
         """

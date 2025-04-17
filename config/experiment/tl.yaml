@@ -3,7 +3,7 @@ pretrained_mtl_model: "/home/ubuntu/VT2/pretrained_mtl_model_weights.pth"
 preprocessed_data: "/home/ubuntu/VT2/outputs/preprocessed_data.pkl"
 subject: 1       # Replace with your new subject's identifier
 freeze_backbone: false
-epochs: 20
+epochs: 100
 lr: 0.001
 device: "cpu"
 out_dir: "tl_outputs"
