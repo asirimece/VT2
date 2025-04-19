@@ -12,7 +12,7 @@ from lib.mtl.trainer import MTLWrapper  # MTLWrapper class from your multitask_t
 from lib.mtl.evaluate import MTLEvaluator   # Your evaluator module
 from lib.mtl.utils import convert_state_dict_keys
 
-def load_preprocessed_data(preprocessed_file="outputs/preprocessed_data.pkl"):
+def load_preprocessed_data(preprocessed_file="dump/preprocessed_data.pkl"):
     with open(preprocessed_file, "rb") as f:
         preprocessed = pickle.load(f)
     
@@ -31,7 +31,7 @@ def load_preprocessed_data(preprocessed_file="outputs/preprocessed_data.pkl"):
     y = np.concatenate(labels_list, axis=0)
     return X, y, subject_ids_list
 
-def load_cluster_wrapper(config_path="config/dataset/bci_iv2a.yaml", features_file="outputs/2025-03-28/both_ems/features___.pkl"):
+def load_cluster_wrapper(config_path="config/dataset/bci_iv2a.yaml", features_file="dump/features.pkl"):
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
     clustering_config = config.get('clustering', {})
@@ -86,7 +86,7 @@ def plot_subject_scatter(cluster_wrapper, output_file="subject_scatter.png"):
 
 def main():
     # Load preprocessed EEG data.
-    data, labels, subject_ids = load_preprocessed_data("outputs/preprocessed_data.pkl")
+    data, labels, subject_ids = load_preprocessed_data("dump/preprocessed_data.pkl")
     
     # Load clustering results.
     cluster_wrapper = load_cluster_wrapper()
@@ -113,7 +113,13 @@ def main():
     criterion = torch.nn.CrossEntropyLoss()
     
     print("Starting MTL training...")
-    model = train_mtl_model(model, dataloader, criterion, optimizer, device, num_epochs=100)
+    model = train_mtl_model(model, 
+                            dataloader, 
+                            criterion, 
+                            optimizer, 
+                            device, 
+                            num_epochs=mtl_config["num_epochs"],
+                             lambda_bias=mtl_config["lambda_bias"][0])
     
     print("Evaluating MTL model...")
     # Run evaluation; our evaluate_mtl_model now returns subject_ids, ground truth, and predictions.
@@ -154,10 +160,10 @@ def main():
     
     # Load evaluation configuration from config/experiment/mtl.yaml
     with open("config/experiment/mtl.yaml", "r") as f:
-        eval_config = yaml.safe_load(f)
+        mtl_config = yaml.safe_load(f)
     
     # Now pass the configuration as the third argument.
-    evaluator = MTLEvaluator(mtl_wrapper, baseline_results, eval_config)
+    evaluator = MTLEvaluator(mtl_wrapper, baseline_results, mtl_config)
     evaluator.evaluate(verbose=True)
 
 if __name__ == "__main__":

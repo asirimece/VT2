@@ -82,42 +82,47 @@ class EEGMultiTaskDataset(Dataset):
         cluster_id = self.cluster_wrapper.get_cluster_for_subject(subject_id)
         return sample, label, subject_id, cluster_id
 
-def train_mtl_model(model, dataloader, criterion, optimizer, device, num_epochs=100, lambda_bias=0.001):
+import torch
+
+def train_mtl_model(model, dataloader, criterion, optimizer, device, num_epochs=100):
+    """
+    Train an MTL model using only the optimizer's weight_decay for L2.
+    (Removed explicit bias penalty to avoid double-regularization.)
+    """
     model.to(device)
     for epoch in range(num_epochs):
         model.train()
         epoch_loss = 0.0
-        total_correct = 0
-        total_samples = 0
-        # Unpack four values now: data, labels, subject_ids, cluster_ids
+        epoch_correct = 0
+        epoch_samples = 0
+
         for data, labels, subject_ids, cluster_ids in dataloader:
+            # move everything to device
             data = data.to(device, dtype=torch.float)
             labels = labels.to(device, dtype=torch.long)
             if not torch.is_tensor(cluster_ids):
                 cluster_ids = torch.tensor(cluster_ids, dtype=torch.long)
             cluster_ids = cluster_ids.to(device)
-            
+
             optimizer.zero_grad()
             outputs = model(data, cluster_ids)
             loss = criterion(outputs, labels)
-            
-            bias_penalty = 0.0
-            for head in model.heads.values():
-                if head.bias is not None:
-                    bias_penalty += torch.sum(head.bias ** 2)
-            loss_total = loss + lambda_bias * bias_penalty
-            
+
+            # no explicit bias penalty any more
             loss.backward()
             optimizer.step()
 
+            # bookkeeping
             batch_size = data.size(0)
-            epoch_loss += loss.item() * batch_size
-            _, preds = torch.max(outputs, dim=1)
-            total_correct += (preds == labels).sum().item()
-            total_samples += batch_size
-        avg_loss = epoch_loss / total_samples
-        accuracy = total_correct / total_samples
-        print(f"Epoch {epoch+1}/{num_epochs}: Loss = {avg_loss:.4f}, Accuracy = {accuracy:.4f}")
+            epoch_loss   += loss.item() * batch_size
+            preds         = outputs.argmax(dim=1)
+            epoch_correct+= (preds == labels).sum().item()
+            epoch_samples+= batch_size
+
+        avg_loss = epoch_loss / epoch_samples
+        accuracy = epoch_correct / epoch_samples
+        print(f"End Epoch {epoch+1}/{num_epochs}: Loss = {avg_loss:.4f}, Accuracy = {accuracy:.4f}")
+
     return model
 
 def evaluate_mtl_model(model, dataloader, device):

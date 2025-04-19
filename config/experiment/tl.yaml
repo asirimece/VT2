@@ -1,14 +1,21 @@
-# conf/tl.yaml
-pretrained_mtl_model: "/home/ubuntu/VT2/pretrained_mtl_model_weights.pth"
-preprocessed_data: "/home/ubuntu/VT2/outputs/preprocessed_data.pkl"
-subject: 1       # Replace with your new subject's identifier
+preprocessed_data: "dump/preprocessed_data.pkl"
+
+# If `init_from_scratch` = true, we skip loading `pretrained_mtl_model`.
+pretrained_mtl_model: "dump/trained_models/mtl_all/mtl_model_weights.pth"
+#pretrained_mtl_model: null
+init_from_scratch: false
+
+subject: 1       # unseen subject's id
 freeze_backbone: false
 epochs: 100
 lr: 0.001
-device: "cpu"
-out_dir: "tl_outputs"
+weight_decay: 0.001
 batch_size: 64
+
+device: "cpu"
+
+out_dir: "dump/trained/models/tl"
 
 model:
   n_outputs: 4              # Number of classes (e.g., 4 for BCI Competition 2a)
-  n_clusters_pretrained: 8   # Number of clusters used during MTL pretraining
+  n_clusters_pretrained: 4   # Number of clusters used during MTL pretraining

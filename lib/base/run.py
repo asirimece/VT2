@@ -9,7 +9,7 @@ This script is specialized solely for evaluation.
 import pickle
 from lib.logging import logger
 from omegaconf import OmegaConf
-from lib.base.evaluate import Evaluator
+from lib.base.evaluate import BaselineEvaluator
 from lib.base.train import BaselineTrainer, BaseWrapper
 
 def main():

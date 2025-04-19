@@ -1,12 +1,13 @@
 import hydra
 from omegaconf import DictConfig
-#from src import base
-from src import transfer
+from src import base
+#from src import transfer
 
 @hydra.main(config_path="../config", config_name="config", version_base=None)
 def main(config: DictConfig):
     #experiment_type = config.experiment.name
-    transfer.run(config)
+    #transfer.run(config)
+    base.run(config)
     
 """    if experiment_type == "base":
         base.run(config)

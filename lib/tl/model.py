@@ -24,18 +24,22 @@ class TLModel(nn.Module):
         print(f"[DEBUG] MultiTaskDeep4Net created with n_times={window_samples}")
 
     def forward(self, x, cluster_id):
-        # Forward pass routes data to the correct cluster head.
-        print(f"[DEBUG] Forward pass with input shape: {x.shape} and cluster_id: {cluster_id}")
         return self.mtl_net(x, cluster_id)
 
     def add_new_head(self, new_cluster_id, feature_dim=None, dummy_input=None):
         """
         Create and add a new linear head for the new subject.
-        If feature_dim is not provided, dummy_input is used to infer it.
+        If feature_dim is none, create dummy_input for scratch baseline.
         """
         if feature_dim is None:
+            # if user didn’t give a dummy, build one from n_chans & window_samples
             if dummy_input is None:
-                raise ValueError("Provide either feature_dim or dummy_input to infer the feature dimension.")
+                import torch
+                device = next(self.parameters()).device
+                dummy_input = torch.zeros(
+                    1, self.n_chans, self.window_samples, device=device
+                )
+            # run it through the shared backbone
             with torch.no_grad():
                 dummy_feat = self.mtl_net.shared_backbone(dummy_input)
                 feature_dim = dummy_feat.shape[1]
