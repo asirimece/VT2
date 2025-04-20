@@ -1,9 +1,8 @@
-# lib/base/evaluate.py
 import os
 import numpy as np
 import pandas as pd
 from lib.evaluate.visuals import VisualEvaluator
-from lib.evaluate.metrics  import MetricsEvaluator
+from lib.evaluate.metrics import MetricsEvaluator
 from lib.logging import logger
 
 logger = logger.get()
@@ -12,12 +11,11 @@ class BaselineEvaluator:
     def __init__(self, config: dict):
         # pull out sub‐configs
         quant = config.get("quantitative", {})
-        self.metrics        = MetricsEvaluator(quant)
-        self.aggregate      = quant.get("n_runs_aggregation", False)
+        self.metrics     = MetricsEvaluator(quant)
 
         qual = config.get("qualitative", {})
-        self.visualizer    = VisualEvaluator(qual)
-        self.output_dir    = qual.get("output_dir", "./evaluation_plots")
+        self.visualizer  = VisualEvaluator(qual)
+        self.output_dir  = qual.get("output_dir", "./evaluation_plots")
         os.makedirs(self.output_dir, exist_ok=True)
 
     def evaluate_all(self, wrapper):
@@ -25,76 +23,89 @@ class BaselineEvaluator:
 
         # ----- single-subject -----
         for subj, runs in wrapper.results_by_experiment["single"].items():
-            # compute per-run or aggregated
             per_run_metrics = []
             for run_res in runs:
-                gt = np.array(run_res["ground_truth"])
-                pr = np.array(run_res["predictions"])
+                gt  = np.array(run_res["ground_truth"])
+                pr  = np.array(run_res["predictions"])
                 prb = run_res.get("probabilities", None)
                 per_run_metrics.append(self.metrics.evaluate(gt, pr, prb))
 
-            if self.aggregate:
-                agg = {}
-                for k, v0 in per_run_metrics[0].items():
-                    vals = [m[k] for m in per_run_metrics]
-                    agg[k] = float(np.mean(vals)) if isinstance(v0, (int,float)) else v0
-                metrics_list = [agg]
-            else:
-                metrics_list = per_run_metrics
+            # report each run
+            for i, m in enumerate(per_run_metrics, start=1):
+                rows.append({
+                    "mode":   "single",
+                    "subject": subj,
+                    "run":    i,
+                    **m
+                })
 
-            for m in metrics_list:
-                rows.append({"mode":"single", "subject":subj, **m})
+            # compute and report mean over runs
+            agg = {}
+            for k, v0 in per_run_metrics[0].items():
+                vals = [m[k] for m in per_run_metrics]
+                if isinstance(v0, (int, float, np.floating)):
+                    agg[k] = float(np.mean(vals))
+                else:
+                    agg[k] = v0
+            rows.append({
+                "mode":   "single",
+                "subject": subj,
+                "run":    "mean",
+                **agg
+            })
 
-            # optionally plot confusion‐matrix heatmap/ROC here
-            # take the last run’s preds & probabilities
+            # plot using last run
             last = runs[-1]
             gt   = np.array(last["ground_truth"])
             pr   = np.array(last["predictions"])
-            prb  = last.get("probabilities", None)
             self.visualizer.plot_confusion_matrix(
                 gt,
                 pr,
-                filename=f"cm_subj_{subj}.png")            
-            if "roc_curve" in self.metrics.metrics and prb is not None:
-                self.visualizer.plot_roc_curve(
-                    gt,
-                    prb,
-                    filename_prefix=f"roc_subj_{subj}")
+                filename=f"cm_subj_{subj}.png"
+            )
 
         # ----- pooled -----
         pooled_runs = wrapper.results_by_experiment["pooled"]
         per_run_metrics = []
         for run_res in pooled_runs:
-            gt = np.array(run_res["ground_truth"])
-            pr = np.array(run_res["predictions"])
+            gt  = np.array(run_res["ground_truth"])
+            pr  = np.array(run_res["predictions"])
             prb = run_res.get("probabilities", None)
             per_run_metrics.append(self.metrics.evaluate(gt, pr, prb))
 
-        if self.aggregate:
-            agg = {}
-            for k, v0 in per_run_metrics[0].items():
-                vals = [m[k] for m in per_run_metrics]
-                agg[k] = float(np.mean(vals)) if isinstance(v0, (int,float)) else v0
-            metrics_list = [agg]
-        else:
-            metrics_list = per_run_metrics
+        # report each pooled run
+        for i, m in enumerate(per_run_metrics, start=1):
+            rows.append({
+                "mode":   "pooled",
+                "subject":"all",
+                "run":    i,
+                **m
+            })
 
-        for m in metrics_list:
-            rows.append({"mode":"pooled", "subject":"all", **m})
+        # pooled mean
+        agg = {}
+        for k, v0 in per_run_metrics[0].items():
+            vals = [m[k] for m in per_run_metrics]
+            if isinstance(v0, (int, float, np.floating)):
+                agg[k] = float(np.mean(vals))
+            else:
+                agg[k] = v0
+        rows.append({
+            "mode":   "pooled",
+            "subject":"all",
+            "run":    "mean",
+            **agg
+        })
 
-        # confusion‐matrix + ROC for pooled
+        # plot using last pooled run
         last = pooled_runs[-1]
         gt   = np.array(last["ground_truth"])
         pr   = np.array(last["predictions"])
-        prb  = last.get("probabilities", None)
-        self.visualizer.plot_confusion_matrix(gt, 
-                                              pr,
-                                              filename=f"cm_pooled.png")
-
-        if "roc_curve" in self.metrics.metrics and prb is not None:
-            self.visualizer.plot_roc(gt, 
-                                     prb,
-                os.path.join(self.output_dir, "roc_pooled.png"))
+        self.visualizer.plot_confusion_matrix(
+            gt,
+            pr,
+            filename="cm_pooled.png"
+        )
 
         # finally: save a CSV & log it
         df = pd.DataFrame(rows)
@@ -102,7 +113,6 @@ class BaselineEvaluator:
         df.to_csv(csv_path, index=False)
         logger.info("Saved baseline metrics → %s", csv_path)
         logger.info("\n%s", df.to_markdown(index=False))
-
 
 
 

@@ -3,7 +3,7 @@ import numpy as np
 import pickle
 import yaml
 import matplotlib.pyplot as plt
-from lib.cluster.methods import evaluate_k_means, kmeans_clustering, hierarchical_clustering, dbscan_clustering
+from lib.pipeline.cluster.methods import evaluate_k_means, kmeans_clustering, hierarchical_clustering, dbscan_clustering
 
 class ClusterWrapper:
     def __init__(self, subject_ids, labels, model, subject_representations):

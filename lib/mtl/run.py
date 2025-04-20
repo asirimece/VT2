@@ -1,16 +1,17 @@
 import torch
 from torch.utils.data import DataLoader
-from lib.mtl.trainer import EEGMultiTaskDataset, train_mtl_model, evaluate_mtl_model
+from lib.dataset.dataset import EEGMultiTaskDataset
+from lib.mtl.train import train_mtl_model, evaluate_mtl_model
 from lib.mtl.model import MultiTaskDeep4Net
-from lib.cluster.cluster import ClusterWrapper, SubjectClusterer  # Import your implemented ClusterWrapper
+from lib.pipeline.cluster.cluster import ClusterWrapper, SubjectClusterer  # Import your implemented ClusterWrapper
 import yaml
 import numpy as np
 import pickle
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
-from lib.mtl.trainer import MTLWrapper  # MTLWrapper class from your multitask_trainer.py
+from lib.mtl.train import MTLWrapper  # MTLWrapper class from your multitask_trainer.py
 from lib.mtl.evaluate import MTLEvaluator   # Your evaluator module
-from lib.mtl.utils import convert_state_dict_keys
+from lib.utils.utils import convert_state_dict_keys
 
 def load_preprocessed_data(preprocessed_file="dump/preprocessed_data.pkl"):
     with open(preprocessed_file, "rb") as f:
@@ -118,7 +119,7 @@ def main():
                             criterion, 
                             optimizer, 
                             device, 
-                            num_epochs=mtl_config["num_epochs"],
+                            epochs=mtl_config["epochs"],
                              lambda_bias=mtl_config["lambda_bias"][0])
     
     print("Evaluating MTL model...")

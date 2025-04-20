@@ -2857,3 +2857,5 @@ outputs/2025-04-19/14-19-41/main.log
 outputs/2025-04-19/14-19-41/.hydra/config.yaml
 outputs/2025-04-19/14-19-41/.hydra/hydra.yaml
 outputs/2025-04-19/14-19-41/.hydra/overrides.yaml
+dump/trained_models/baseline/pooled_training.pkl
+dump/trained_models/baseline/single_subject_training.pkl

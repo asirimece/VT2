@@ -234,23 +234,21 @@ class BaselineTrainer:
 
     def run(self):
         """
-        Orchestrates single & pooled training and saves list-of-runs results.
+        Orchestrates single & pooled training.
         """
-        # --- single-subject ---
         single_res = {}
         for subj, data in self.preprocessed_data.items():
             single_res[subj] = self.train_subject(subj, data)
         os.makedirs(os.path.dirname(self.single_results_path), exist_ok=True)
         with open(self.single_results_path, "wb") as f:
             pickle.dump(single_res, f)
-        print(f"[INFO] Single-subject training results are saved.")
+        logger.info(f"Single-subject training results are saved.")
 
-        # --- pooled ---
         pooled_res = self.train_pooled()
         os.makedirs(os.path.dirname(self.pooled_results_path), exist_ok=True)
         with open(self.pooled_results_path, "wb") as f:
             pickle.dump(pooled_res, f)
-        print(f"[INFO] Pooled training results are saved.")
+        logger.info(f"Pooled training results are saved.")
 
         return BaseWrapper({"single": single_res,
                             "pooled": pooled_res})

@@ -22,3 +22,13 @@ def _prefix_mtl_keys(state_dict):
         else:
             new_sd[key] = val
     return new_sd
+
+def convert_state_dict_keys(state_dict):
+    new_state_dict = {}
+    for key, value in state_dict.items():
+        if key.startswith("shared_backbone") or key.startswith("heads"):
+            new_key = "mtl_net." + key
+        else:
+            new_key = key
+        new_state_dict[new_key] = value
+    return new_state_dict

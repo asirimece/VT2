@@ -33,8 +33,9 @@ experiment:
       n_outputs: 4
 
     training:
-      n_runs: 5
-      num_epochs: 100
+      n_runs: 3
+      seed_start:  42
+      epochs: 100
       batch_size: 64
       learning_rate: [0.001, 0.005, 0.01]   
       lambda_bias: [0.0001, 0.001, 0.01]  
@@ -48,15 +49,22 @@ experiment:
       metrics:
         - "accuracy"
         - "kappa"
+        - "precision"
+        - "recall"
+        - "f1_score"
         - "confusion_matrix"
         - "roc_curve"
-      n_runs_aggregation: true
+      cluster_metrics: ${.metrics}
+
     qualitative:
       visualizations:
-        - "tsne"
         - "pca"
+        - "tsne"
+        - "confusion_matrix"
+        - "roc_curve"
       pca_n_components: 3
       tsne:
         perplexity: 30
-        n_iter: 1000
-      output_dir: "./evaluation_plots"
+        n_iter:     1000
+        
+  output_dir: "./evaluation_plots/mtl"

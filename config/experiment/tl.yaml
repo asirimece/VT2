@@ -1,11 +1,10 @@
 preprocessed_data: "dump/preprocessed_data.pkl"
 
-# If `init_from_scratch` = true, we skip loading `pretrained_mtl_model`.
-pretrained_mtl_model: "dump/trained_models/mtl_all/mtl_model_weights.pth"
 #pretrained_mtl_model: null
-init_from_scratch: false
+pretrained_mtl_model: "dump/trained_models/mtl_all/mtl_model_weights.pth"
+init_from_scratch: false  # Set true to skip loading pretrained mtl model.
 
-subject: 1       # unseen subject's id
+subject: 1       # Unseen subject's id.
 freeze_backbone: false
 epochs: 100
 lr: 0.001
@@ -14,8 +13,8 @@ batch_size: 64
 
 device: "cpu"
 
-out_dir: "dump/trained/models/tl"
+out_dir: "dump/trained_models/tl"
 
 model:
-  n_outputs: 4              # Number of classes (e.g., 4 for BCI Competition 2a)
-  n_clusters_pretrained: 4   # Number of clusters used during MTL pretraining
+  n_outputs: 4              # Number of classes.
+  n_clusters_pretrained: 4   # Number of clusters used during MTL pretraining.

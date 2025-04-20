@@ -8,9 +8,10 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from lib.cluster.methods import evaluate_k_means  # optional
-from lib.cluster.cluster import SubjectClusterer
-from lib.mtl.trainer import EEGMultiTaskDataset, train_mtl_model
+from lib.dataset.dataset import EEGMultiTaskDataset
+from lib.pipeline.cluster.methods import evaluate_k_means  # optional
+from lib.pipeline.cluster.cluster import SubjectClusterer
+from lib.mtl.train import train_mtl_model
 from lib.mtl.model import MultiTaskDeep4Net
 
 def parse_args():
@@ -99,7 +100,7 @@ def main():
         criterion,
         optimizer,
         device,
-        num_epochs=train_cfg["num_epochs"]
+        epochs=train_cfg["epochs"]
     )
 
     # --- save

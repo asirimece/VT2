@@ -1,4 +1,163 @@
-# mtlevaluator.py
+# lib/pipeline/mtl/mtlevaluator.py
+
+import os
+import pickle
+
+import numpy as np
+import pandas as pd
+from omegaconf import DictConfig
+
+from lib.logging          import logger
+from lib.evaluate.metrics import MetricsEvaluator
+from lib.evaluate.visuals import VisualEvaluator
+
+logger = logger.get()
+
+class MTLEvaluator:
+    """
+    Reports per‐run and mean±std metrics:
+      - subject‐level (with cluster IDs)
+      - cluster‐level
+      - pooled
+    """
+
+    def __init__(self, mtl_wrapper, baseline_wrapper, config: DictConfig):
+        self.mtl_wrapper      = mtl_wrapper
+        self.baseline_wrapper = baseline_wrapper
+
+        qc = config.quantitative
+        # per‐subject & pooled metrics
+        self.metrics         = MetricsEvaluator({"metrics": qc.metrics})
+        # per‐cluster metrics
+        self.cluster_metrics = MetricsEvaluator({"metrics": qc.cluster_metrics})
+
+        self.visuals = VisualEvaluator({
+            "visualizations":   config.qualitative.visualizations,
+            "pca_n_components": config.qualitative.pca_n_components,
+            "tsne":             config.qualitative.tsne,
+            "output_dir":       config.qualitative.output_dir,
+        })
+
+    def evaluate(self):
+        out_dir = self.visuals.output_dir
+        os.makedirs(out_dir, exist_ok=True)
+
+        # —— 1) SUBJECT‐LEVEL —— 
+        subj_run_rows = []
+        for subj, runs in self.mtl_wrapper.results_by_subject.items():
+            for run_idx, run in enumerate(runs):
+                gt = np.array(run["ground_truth"])
+                pr = np.array(run["predictions"])
+                m  = self.metrics.evaluate(gt, pr)
+                row = {"run": run_idx, "subject": subj}
+                row.update(m)
+                subj_run_rows.append(row)
+
+                if "confusion_matrix" in self.metrics.metrics:
+                    self.visuals.plot_confusion_matrix(
+                        gt, pr,
+                        filename=f"cm_mtl_subj_{subj}_run{run_idx}.png"
+                    )
+
+        df_subj_run = pd.DataFrame(subj_run_rows)
+        df_subj_run.to_csv(os.path.join(out_dir, "mtl_subject_run_metrics.csv"), index=False)
+
+        # compute mean & std across runs per subject
+        subj_stats = df_subj_run.groupby("subject").agg(["mean","std"])
+        # flatten column MultiIndex
+        subj_stats.columns = [f"{metric}_{stat}" for metric,stat in subj_stats.columns]
+        subj_stats = subj_stats.reset_index()
+        # add cluster info
+        subj_stats["cluster"] = subj_stats["subject"].map(self.mtl_wrapper.cluster_assignments)
+        # reorder columns: subject, cluster, then metrics
+        cols = ["subject","cluster"] + [c for c in subj_stats.columns if c not in ("subject","cluster")]
+        subj_stats = subj_stats[cols]
+        subj_stats.to_csv(os.path.join(out_dir, "mtl_subject_stats_metrics.csv"), index=False)
+
+
+        # —— 2) CLUSTER‐LEVEL —— 
+        cluster_run_rows = []
+        # determine max runs
+        max_runs = max(len(runs) for runs in self.mtl_wrapper.results_by_subject.values())
+        for run_idx in range(max_runs):
+            for subj, runs in self.mtl_wrapper.results_by_subject.items():
+                if run_idx < len(runs):
+                    run = runs[run_idx]
+                    gt  = np.array(run["ground_truth"])
+                    pr  = np.array(run["predictions"])
+                    cl  = self.mtl_wrapper.cluster_assignments.get(subj, "None")
+                    m   = self.cluster_metrics.evaluate(gt, pr)
+                    row = {"run": run_idx, "cluster": cl}
+                    row.update(m)
+                    cluster_run_rows.append(row)
+
+                    if "confusion_matrix" in self.cluster_metrics.metrics:
+                        self.visuals.plot_confusion_matrix(
+                            gt, pr,
+                            filename=f"cm_mtl_cluster_{cl}_run{run_idx}.png"
+                        )
+
+        df_cl_run = pd.DataFrame(cluster_run_rows)
+        df_cl_run.to_csv(os.path.join(out_dir, "mtl_cluster_run_metrics.csv"), index=False)
+
+        # compute mean & std across runs per cluster
+        cl_stats = df_cl_run.groupby("cluster").agg(["mean","std"])
+        cl_stats.columns = [f"{metric}_{stat}" for metric,stat in cl_stats.columns]
+        cl_stats = cl_stats.reset_index()
+        cl_stats.to_csv(os.path.join(out_dir, "mtl_cluster_stats_metrics.csv"), index=False)
+
+
+        # —— 3) POOLED —— 
+        pooled_run_rows = []
+        for run_idx in range(max_runs):
+            all_gt, all_pr = [], []
+            for runs in self.mtl_wrapper.results_by_subject.values():
+                if run_idx < len(runs):
+                    all_gt.extend(runs[run_idx]["ground_truth"])
+                    all_pr.extend(runs[run_idx]["predictions"])
+            gt = np.array(all_gt)
+            pr = np.array(all_pr)
+            m  = self.metrics.evaluate(gt, pr)
+            row = {"run": run_idx}
+            row.update(m)
+            pooled_run_rows.append(row)
+
+            if "confusion_matrix" in self.metrics.metrics:
+                self.visuals.plot_confusion_matrix(
+                    gt, pr,
+                    filename=f"cm_mtl_pooled_run{run_idx}.png"
+                )
+
+        df_pooled_run = pd.DataFrame(pooled_run_rows)
+        df_pooled_run.to_csv(os.path.join(out_dir, "mtl_pooled_run_metrics.csv"), index=False)
+
+        # compute mean & std across runs pooled
+        pooled_stats = df_pooled_run.drop(columns=["run"]).agg(["mean","std"]).T
+        pooled_stats.columns = ["mean","std"]
+        pooled_stats = pooled_stats.reset_index().rename(columns={"index":"metric"})
+        pooled_stats.to_csv(os.path.join(out_dir, "mtl_pooled_stats_metrics.csv"), index=False)
+
+
+        # log file locations
+        logger.info("Saved subject/run metrics → %s", out_dir + "/mtl_subject_run_metrics.csv")
+        logger.info("Saved subject/stats metrics → %s", out_dir + "/mtl_subject_stats_metrics.csv")
+        logger.info("Saved cluster/run metrics → %s", out_dir + "/mtl_cluster_run_metrics.csv")
+        logger.info("Saved cluster/stats metrics → %s", out_dir + "/mtl_cluster_stats_metrics.csv")
+        logger.info("Saved pooled/run metrics → %s", out_dir + "/mtl_pooled_run_metrics.csv")
+        logger.info("Saved pooled/stats metrics → %s", out_dir + "/mtl_pooled_stats_metrics.csv")
+
+        return {
+            "subject_run": df_subj_run,
+            "subject_stats": subj_stats,
+            "cluster_run": df_cl_run,
+            "cluster_stats": cl_stats,
+            "pooled_run": df_pooled_run,
+            "pooled_stats": pooled_stats
+        }
+
+
+
+"""# mtlevaluator.py
 
 import pickle
 import numpy as np
@@ -6,7 +165,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 from lib.logging import logger
-from lib.mtl.trainer import MTLWrapper
+from lib.mtl.train import MTLWrapper
 from omegaconf import OmegaConf
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
 
@@ -14,17 +173,6 @@ logger = logger.get()
 
 class MTLEvaluator:
     def __init__(self, mtl_wrapper, baseline_wrapper, config):
-        """
-        Initializes the evaluator.
-        
-        Parameters:
-          mtl_wrapper (MTLWrapper): Wrapped MTL training results.
-              Expected to have:
-                - results_by_subject: dict mapping subject IDs (or "pooled") to a dict with keys "ground_truth" and "predictions"
-                - cluster_assignments: (optional) dict mapping subject IDs to cluster IDs.
-          baseline_wrapper (MTLWrapper or dict): Wrapped baseline results with a similar interface.
-          config (dict): Evaluation configuration (loaded from YAML via OmegaConf) for additional parameters.
-        """
         self.mtl_wrapper = mtl_wrapper
         # If baseline_wrapper is a plain dict, wrap it.
         if isinstance(baseline_wrapper, dict):
@@ -57,7 +205,6 @@ class MTLEvaluator:
         return obj
 
     def compute_overall_metrics(self, wrapper):
-        """Compute overall accuracy, confusion matrix, and classification report from a wrapper."""
         all_gt = []
         all_pred = []
         for subj, res in wrapper.results_by_subject.items():
@@ -76,10 +223,6 @@ class MTLEvaluator:
         return {"accuracy": overall_acc, "confusion_matrix": overall_cm, "report": overall_report}
 
     def compute_cluster_metrics(self, wrapper):
-        """
-        Computes cluster-level metrics by grouping subjects based on cluster assignments.
-        Returns a dict mapping each cluster to its metrics.
-        """
         cluster_data = {}
         if not hasattr(wrapper, "cluster_assignments") or not wrapper.cluster_assignments:
             return {}
@@ -103,10 +246,6 @@ class MTLEvaluator:
         return cluster_metrics
 
     def compute_subject_metrics(self):
-        """
-        Computes subject-level metrics and returns a DataFrame.
-        Each record includes: subject, cluster, baseline_accuracy, mtl_accuracy, difference.
-        """
         records = []
         baseline_dict = (self.baseline_wrapper.results_by_subject 
                          if hasattr(self.baseline_wrapper, "results_by_subject") 
@@ -225,3 +364,4 @@ if __name__ == "__main__":
     with open("mtl_evaluation_summary.pkl", "wb") as f:
         pickle.dump(summary, f)
     print("Evaluation summary saved to mtl_evaluation_summary.pkl")
+"""

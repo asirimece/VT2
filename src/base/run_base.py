@@ -18,8 +18,8 @@ def run(config: DictConfig) -> None:
    #logger.info(f"Preprocessed data saved to: {config.dataset.preprocessing.output_file}")
    
    # STEP 2: Baseline Model Training
-   trainer = BaselineTrainer()  # Trainer internally loads its model and experiment configurations
-   training_results = trainer.run()  # Handles both "single" and "pooled" modes based on config.experiment.mode
+   trainer = BaselineTrainer()  
+   training_results = trainer.run()  
    logger.info("Baseline model training complete.")
 
    # STEP 3: Evaluation

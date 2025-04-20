@@ -7,17 +7,6 @@ logger = logger.get()
 class EEGDataset(Dataset):
     """
     Wraps EEG data, labels, and trial IDs for sub-epochs.
-    
-    If epochs_or_data has a get_data() method (i.e. an MNE Epochs object), it will be used to extract 
-    the data along with the events. Otherwise, it assumes that pre-computed NumPy arrays are passed in.
-    
-    Parameters:
-        epochs_or_data: Either an MNE Epochs object or a NumPy array.
-        labels: (Optional) NumPy array for labels. If provided, then data is assumed precomputed.
-        trial_ids: (Optional) NumPy array for trial identifiers.
-        transform: (Optional) A transformation to apply.
-        subject_id: (Optional) Subject identifier.
-        session_key: (Optional) Session identifier.
     """
     def __init__(self, epochs_or_data, labels=None, trial_ids=None, transform=None, subject_id=None, session_key=None):
         self.transform = transform
@@ -47,3 +36,30 @@ class EEGDataset(Dataset):
         if self.transform:
             sample = self.transform(sample)
         return sample
+
+
+class EEGMultiTaskDataset(Dataset):
+    def __init__(self, data, labels, subject_ids, cluster_wrapper):
+        """
+        Dataset for multi-task EEG classification.
+
+        Parameters:
+            data (np.array): EEG samples, shape [N, channels, time].
+            labels (np.array): Class labels for each sample, shape [N].
+            subject_ids (list): Subject identifier for each sample.
+            cluster_wrapper (ClusterWrapper): An instance that provides get_cluster_for_subject(subject_id).
+        """
+        self.data = data
+        self.labels = labels
+        self.subject_ids = subject_ids
+        self.cluster_wrapper = cluster_wrapper
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, index):
+        sample = self.data[index]
+        label = self.labels[index]
+        subject_id = self.subject_ids[index]
+        cluster_id = self.cluster_wrapper.get_cluster_for_subject(subject_id)
+        return sample, label, subject_id, cluster_id
