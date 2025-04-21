@@ -1,0 +1,2 @@
+scratch vs cluster1: stat=12.000, p=4.609e-01
+global  vs cluster1: stat=0.000, p=3.906e-03

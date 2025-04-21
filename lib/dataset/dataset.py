@@ -1,8 +1,6 @@
 import torch
-from torch.utils.data import Dataset, ConcatDataset, DataLoader
-from lib.logging import logger
+from torch.utils.data import Dataset
 
-logger = logger.get()
 
 class EEGDataset(Dataset):
     """
@@ -25,8 +23,6 @@ class EEGDataset(Dataset):
         self.X = torch.tensor(data, dtype=torch.float32)
         self.y = torch.tensor(self.labels, dtype=torch.long)
         self.trial_ids = torch.tensor(self.trial_ids, dtype=torch.long)
-        
-        logger.info(f"EEGDataset for subject {subject_id} session {session_key}: X shape {self.X.shape}, y shape {self.y.shape}")
 
     def __len__(self):
         return len(self.X)
@@ -42,12 +38,6 @@ class EEGMultiTaskDataset(Dataset):
     def __init__(self, data, labels, subject_ids, cluster_wrapper):
         """
         Dataset for multi-task classification.
-
-        Parameters:
-            data (np.array): EEG samples, shape [N, channels, time].
-            labels (np.array): Class labels for each sample, shape [N].
-            subject_ids (list): Subject identifier for each sample.
-            cluster_wrapper (ClusterWrapper): An instance that provides get_cluster_for_subject(subject_id).
         """
         self.data = data
         self.labels = labels
@@ -64,12 +54,10 @@ class EEGMultiTaskDataset(Dataset):
         cluster_id = self.cluster_wrapper.get_cluster_for_subject(subject_id)
         return sample, label, subject_id, cluster_id
 
+
 class TLSubjectDataset(Dataset):
     """
-    Dataset for Transfer Learning on a new subject.
-    Expects:
-      - X: (n_subepochs, n_channels, n_times)
-      - y: (n_subepochs,)
+    Dataset for transfer learning on a new subject.
     """
     def __init__(self, X, y):
         super().__init__()

@@ -48,9 +48,9 @@ preprocessing:
 
   epoching:
     kwargs:
-      tmin: 2.0         # start 500 ms before the cue
-      tmax: 6.0          # end 4.0 s after the cue (total epoch = 4.5 s)
-      crop_window_length: 2.0    # each sliding-window crop is 2.0 s long
+      tmin: 2.0        
+      tmax: 6.0        
+      crop_window_length: 2.0 
       crop_step_size: 0.5     
       baseline: null
 
@@ -61,7 +61,6 @@ preprocessing:
 
   exponential_moving_standardization:
     kwargs:
-      #apply_on: "training"
       smoothing_factor: 0.1
       eps: 1e-5
 

@@ -6,7 +6,7 @@ from sklearn.metrics import accuracy_score
 # Adjust as needed
 SUBJECTS = list(range(1, 10))
 N_RUNS    = 3
-BASE_DIR  = "models/tl/global"
+BASE_DIR  = "models/tl/cluster0"
 
 missing = []
 accs = {run: {} for run in range(N_RUNS)}

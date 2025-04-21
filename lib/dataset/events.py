@@ -3,9 +3,10 @@ from lib.logging import logger
 
 logger = logger.get()
 
+
 def unify_events(raw, unify_annotations, event_markers):
     """
-    Unify raw event annotations and map them to final numeric codes.
+    Unify raw event annotations.
     """
     events, _ = mne.events_from_annotations(raw, verbose=False)
     new_events = events.copy()

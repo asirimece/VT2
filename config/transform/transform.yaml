@@ -56,6 +56,6 @@ feature_selection:
     min_features_to_select: 10
     #param_grid:
       #estimator__C: [0.1, 1.0, 10.0] 
-    svc_C: 1.0  # the C parameter for the internal linear SVC.
+    svc_C: 1.0  # for the internal linear SVC.
         
 output_file: "./dump/features.pkl"

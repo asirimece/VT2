@@ -4,29 +4,24 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+import seaborn as sns
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
-from sklearn.metrics import confusion_matrix, roc_curve, auc, \
-    ConfusionMatrixDisplay, RocCurveDisplay
-import seaborn as sns
+from sklearn.metrics import (
+    confusion_matrix, 
+    roc_curve, 
+    auc,
+    ConfusionMatrixDisplay, 
+    RocCurveDisplay
+)
+
 
 class VisualEvaluator:
-    """
-    Produce PCA and/or t-SNE scatter plots of feature embeddings,
-    confusion matrices, and ROC curves.
-
-    Config dict should contain:
-      - "visualizations": list from ["pca","tsne","confusion_matrix","roc_curve","cluster_scatter"]
-      - "pca_n_components": int
-      - "tsne": { "perplexity":…, "n_iter":… }
-      - "output_dir": path
-    """
-
     def __init__(self, config: dict):
-        self.visualizations     = config.get("visualizations", [])
-        self.pca_n_components   = config.get("pca_n_components", 3)
-        self.tsne_cfg           = config.get("tsne", {"perplexity":30, "n_iter":1000})
-        self.output_dir         = config.get("output_dir", "./evaluation_plots")
+        self.visualizations = config.get("visualizations", [])
+        self.pca_n_components = config.get("pca_n_components", 3)
+        self.tsne_cfg = config.get("tsne", {"perplexity":30, "n_iter":1000})
+        self.output_dir = config.get("output_dir", "./evaluation_plots")
         os.makedirs(self.output_dir, exist_ok=True)
 
     def plot_pca(self, features: np.ndarray, labels: np.ndarray):
@@ -39,11 +34,10 @@ class VisualEvaluator:
             idx = labels == cls
             plt.scatter(Xp[idx,0], Xp[idx,1], label=str(cls), s=20, alpha=0.8)
         plt.legend()
-        plt.title("PCA Projection")
+        plt.title("PCA")
         out = os.path.join(self.output_dir, "pca_plot.png")
         plt.savefig(out)
         plt.close()
-        print(f"[DEBUG] Saved PCA plot → {out}")
 
     def plot_tsne(self, features: np.ndarray, labels: np.ndarray):
         if "tsne" not in self.visualizations:
@@ -59,11 +53,10 @@ class VisualEvaluator:
             idx = labels == cls
             plt.scatter(Xt[idx,0], Xt[idx,1], label=str(cls), s=20, alpha=0.8)
         plt.legend()
-        plt.title("t-SNE Projection")
+        plt.title("t-SNE")
         out = os.path.join(self.output_dir, "tsne_plot.png")
         plt.savefig(out)
         plt.close()
-        print(f"[DEBUG] Saved t-SNE plot → {out}")
 
     def plot_confusion_matrix(self,
                               ground_truth: np.ndarray,
@@ -72,7 +65,7 @@ class VisualEvaluator:
                               filename: str = "confusion_matrix.png"):
         if "confusion_matrix" not in self.visualizations:
             return
-        cm   = confusion_matrix(ground_truth, predictions, labels=labels)
+        cm = confusion_matrix(ground_truth, predictions, labels=labels)
         disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=labels)
         fig, ax = plt.subplots(figsize=(6,6))
         disp.plot(ax=ax, cmap="Blues", colorbar=False)
@@ -80,7 +73,6 @@ class VisualEvaluator:
         out = os.path.join(self.output_dir, filename)
         fig.savefig(out, bbox_inches="tight")
         plt.close(fig)
-        print(f"[DEBUG] Saved confusion matrix → {out}")
 
     def plot_roc_curve(self,
                        ground_truth:  np.ndarray,

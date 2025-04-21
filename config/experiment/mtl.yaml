@@ -46,7 +46,7 @@ experiment:
   transfer:
     #pretrained_mtl_model: null
     pretrained_mtl_model: "dump/trained_models/mtl_all/mtl_model_weights.pth"
-    init_from_scratch: false  # Set true to skip loading pretrained mtl model.
+    init_from_scratch: false 
     freeze_backbone: true
     n_runs: 3
     seed_start: 42

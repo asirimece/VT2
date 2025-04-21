@@ -1,11 +1,3 @@
-#!/usr/bin/env python
-"""
-trainer.py
-
-Trains Deep4Net for both single‑subject and pooled baselines,
-with multiple runs, seed control, and weight decay.
-"""
-
 import os
 import pickle
 import random
@@ -17,7 +9,6 @@ from sklearn.metrics import accuracy_score, cohen_kappa_score, confusion_matrix
 from omegaconf import OmegaConf
 import mne
 import matplotlib
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from tqdm.auto import tqdm
 from lib.dataset.dataset import EEGDataset
@@ -25,11 +16,15 @@ from lib.model.deep4net import Deep4NetModel
 from lib.base.evaluate import BaselineEvaluator
 from lib.logging import logger
 
+matplotlib.use("Agg")
+
 logger = logger.get()
 
 
 class BaseWrapper:
-    """Container for wrapping training results."""
+    """ 
+    Wraps baseline training results. 
+    """
     def __init__(self, results_by_experiment):
         self.results_by_experiment = results_by_experiment
 
@@ -41,17 +36,12 @@ class BaselineTrainer:
     def __init__(self,
                  base_config_path="config/experiment/base.yaml",
                  model_config_path="config/model/deep4net.yaml"):
-        # Load configs
-        self.base_config  = OmegaConf.load(base_config_path)
+        
+        self.base_config = OmegaConf.load(base_config_path)
         self.model_config = OmegaConf.load(model_config_path)
 
-        print("[DEBUG] Loaded base configuration:")
-        print(OmegaConf.to_yaml(self.base_config))
-        print("[DEBUG] Loaded model configuration:")
-        print(OmegaConf.to_yaml(self.model_config))
-
         exp_cfg = self.base_config.experiment
-        self.device     = exp_cfg.device
+        self.device = exp_cfg.device
         self.single_cfg = exp_cfg.single
         self.pooled_cfg = exp_cfg.pooled
 
@@ -61,39 +51,31 @@ class BaselineTrainer:
         # Load preprocessed data
         with open(self.base_config.data.preprocessed_data, "rb") as f:
             self.preprocessed_data = pickle.load(f)
-        print(f"[DEBUG] Loaded preprocessed data for {len(self.preprocessed_data)} subjects.")
 
     def _train_deep4net_model(self,
                              X_train, y_train, train_ids,
                              X_test,  y_test,  test_ids,
                              model_cfg, train_cfg, device="cpu"):
-        """
-        Trains Deep4Net once and returns (model, trial_results).
-        Applies weight_decay from train_cfg.weight_decay.
-        """
-        # Build model
-        model_inst = Deep4NetModel(model_cfg)
-        model      = model_inst.get_model().to(device)
 
-        # DataLoaders
+        model_inst = Deep4NetModel(model_cfg)
+        model = model_inst.get_model().to(device)
+
         train_ds = EEGDataset(X_train, y_train, train_ids)
-        test_ds  = EEGDataset(X_test,  y_test,  test_ids)
+        test_ds = EEGDataset(X_test,  y_test,  test_ids)
         train_loader = DataLoader(train_ds,
                                   batch_size=train_cfg.batch_size,
                                   shuffle=True)
-        test_loader  = DataLoader(test_ds,
+        test_loader = DataLoader(test_ds,
                                   batch_size=train_cfg.batch_size,
                                   shuffle=False)
 
-        # Optimizer + weight decay
-        Optim     = getattr(torch.optim, train_cfg.optimizer)
+        Optim = getattr(torch.optim, train_cfg.optimizer)
         optimizer = Optim(model.parameters(),
                           lr=train_cfg.learning_rate,
                           weight_decay=train_cfg.weight_decay)
 
         criterion = nn.CrossEntropyLoss()
 
-        # Training loop
         model.train()
         for epoch in range(train_cfg.epochs):
             total_loss, correct, total = 0.0, 0, 0
@@ -122,14 +104,12 @@ class BaselineTrainer:
                     "wd":   f"{train_cfg.weight_decay}"
                 })
 
-            # after epoch
             avg_loss = total_loss / total
             acc      = correct / total
-            print(f"[DEBUG] Epoch {epoch+1}/{train_cfg.epochs} "
+            logger.info(f"Epoch {epoch+1}/{train_cfg.epochs} "
                   f"Loss={avg_loss:.4f} Acc={acc:.4f} "
                   f"WD={train_cfg.weight_decay}")
 
-        # Evaluation: aggregate to trial-level
         model.eval()
         all_logits, all_tids, all_y = [], [], []
         with torch.no_grad():
@@ -161,10 +141,6 @@ class BaselineTrainer:
 
 
     def _train_subject(self, subj, subject_data):
-        """
-        Runs multiple runs for a single subject, reseeding each time.
-        Returns a list of trial_results dicts.
-        """
         tr = subject_data["0train"]
         te = subject_data["1test"]
         Xtr, ytr = tr.get_data(), tr.events[:, -1]
@@ -172,7 +148,6 @@ class BaselineTrainer:
         tid_tr   = tr.events[:, 1]
         tid_te   = te.events[:, 1]
 
-        # Merge model config for 'single'
         common = {k: self.model_config[k]
                   for k in ["name","in_chans","n_classes","n_times","final_conv_length"]
                   if k in self.model_config}
@@ -184,7 +159,7 @@ class BaselineTrainer:
             random.seed(seed)
             np.random.seed(seed)
             torch.manual_seed(seed)
-            print(f"[DEBUG] Single run {run_i+1}/{self.single_cfg.n_runs} "
+            logger.info(f"Single subject run {run_i+1}/{self.single_cfg.n_runs}"
                   f"for subj {subj} (seed={seed})")
 
             _, trial_res = self._train_deep4net_model(
@@ -199,30 +174,27 @@ class BaselineTrainer:
 
 
     def _train_pooled(self):
-        """
-        Runs multiple pooled runs, reseeding each time.
-        Returns a list of trial_results dicts.
-        """
-        # Prepare pooled data once
         Xtr_list, ytr_list, tid_tr_list = [], [], []
         Xte_list, yte_list, tid_te_list = [], [], []
 
         for idx, (_, data) in enumerate(self.preprocessed_data.items()):
             tr = data["0train"]; te = data["1test"]
             offset = idx * 1_000_000
-            Xtr_list.append(tr.get_data());     ytr_list.append(tr.events[:,-1])
+            Xtr_list.append(tr.get_data());     
+            ytr_list.append(tr.events[:,-1])
             tid_tr_list.append(tr.events[:,1] + offset)
-            Xte_list.append(te.get_data());     yte_list.append(te.events[:,-1])
+            Xte_list.append(te.get_data());     
+            yte_list.append(te.events[:,-1])
             tid_te_list.append(te.events[:,1] + offset)
 
-        Xtr   = np.concatenate(Xtr_list, axis=0)
-        ytr   = np.concatenate(ytr_list, axis=0)
+        Xtr = np.concatenate(Xtr_list, axis=0)
+        ytr = np.concatenate(ytr_list, axis=0)
         tid_tr= np.concatenate(tid_tr_list, axis=0)
-        Xte   = np.concatenate(Xte_list, axis=0)
-        yte   = np.concatenate(yte_list, axis=0)
+        Xte = np.concatenate(Xte_list, axis=0)
+        yte = np.concatenate(yte_list, axis=0)
         tid_te= np.concatenate(tid_te_list, axis=0)
 
-        # Merge model config for 'pooled'
+        # Merge model config.
         common = {k: self.model_config[k]
                   for k in ["name","in_chans","n_classes","n_times","final_conv_length"]
                   if k in self.model_config}
@@ -234,7 +206,7 @@ class BaselineTrainer:
             random.seed(seed)
             np.random.seed(seed)
             torch.manual_seed(seed)
-            print(f"[DEBUG] Pooled run {run_i+1}/{self.pooled_cfg.n_runs} (seed={seed})")
+            logger.info(f"Pooled run {run_i+1}/{self.pooled_cfg.n_runs} (seed={seed})")
 
             _, trial_res = self._train_deep4net_model(
                 Xtr, ytr, tid_tr,
@@ -248,9 +220,6 @@ class BaselineTrainer:
 
 
     def run(self):
-        """
-        Orchestrates single & pooled training.
-        """
         single_res = {}
         for subj, data in self.preprocessed_data.items():
             single_res[subj] = self._train_subject(subj, data)

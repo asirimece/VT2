@@ -1,5 +1,3 @@
-# lib/evaluate/metrics.py
-
 import numpy as np
 from sklearn.metrics import (
     accuracy_score,
@@ -12,17 +10,10 @@ from sklearn.metrics import (
     f1_score,
 )
 
+
 class MetricsEvaluator:
-    """
-    Compute a configurable set of quantitative metrics for a single run.
-    Config dict should contain:
-      - "metrics": list of strings from
-         ["accuracy","kappa","precision","recall","f1_score",
-          "confusion_matrix","roc_curve"]
-    """
     def __init__(self, config: dict):
         self.metrics = config.get("metrics", [])
-        print(f"[DEBUG] MetricsEvaluator: using metrics {self.metrics}")
 
     def evaluate(
         self,
@@ -39,7 +30,6 @@ class MetricsEvaluator:
         if "kappa" in self.metrics:
             results["kappa"] = cohen_kappa_score(gt, pr)
         if "precision" in self.metrics:
-            # macro-average across classes
             results["precision"] = precision_score(gt, pr, average="macro", zero_division=0)
         if "recall" in self.metrics:
             results["recall"] = recall_score(gt, pr, average="macro", zero_division=0)

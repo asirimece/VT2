@@ -1,0 +1,1 @@
+scratch vs global: stat=0.000, p=3.906e-03
