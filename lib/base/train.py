@@ -19,7 +19,7 @@ import mne
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-
+from tqdm.auto import tqdm
 from lib.dataset.dataset import EEGDataset
 from lib.model.deep4net import Deep4NetModel
 from lib.base.evaluate import BaselineEvaluator
@@ -63,7 +63,7 @@ class BaselineTrainer:
             self.preprocessed_data = pickle.load(f)
         print(f"[DEBUG] Loaded preprocessed data for {len(self.preprocessed_data)} subjects.")
 
-    def train_deep4net_model(self,
+    def _train_deep4net_model(self,
                              X_train, y_train, train_ids,
                              X_test,  y_test,  test_ids,
                              model_cfg, train_cfg, device="cpu"):
@@ -96,8 +96,14 @@ class BaselineTrainer:
         # Training loop
         model.train()
         for epoch in range(train_cfg.epochs):
-            losses, correct, total = [], 0, 0
-            for Xb, yb, _ in train_loader:
+            total_loss, correct, total = 0.0, 0, 0
+            batch_iter = tqdm(
+                train_loader,
+                desc=f"Epoch {epoch+1}/{train_cfg.epochs}",
+                unit="batch",
+                leave=False
+            )
+            for Xb, yb, _ in batch_iter:
                 Xb, yb = Xb.to(device), yb.to(device)
                 optimizer.zero_grad()
                 logits = model(Xb)
@@ -105,13 +111,22 @@ class BaselineTrainer:
                 loss.backward()
                 optimizer.step()
 
-                preds = logits.argmax(dim=1)
+                preds   = logits.argmax(dim=1)
                 correct += (preds == yb).sum().item()
                 total   += Xb.size(0)
-                losses.append(loss.item())
+                total_loss += loss.item() * Xb.size(0)
 
+                batch_iter.set_postfix({
+                    "loss": f"{(total_loss/total):.4f}",
+                    "acc":  f"{(correct/total):.4f}",
+                    "wd":   f"{train_cfg.weight_decay}"
+                })
+
+            # after epoch
+            avg_loss = total_loss / total
+            acc      = correct / total
             print(f"[DEBUG] Epoch {epoch+1}/{train_cfg.epochs} "
-                  f"Loss={np.mean(losses):.4f} Acc={correct/total:.4f} "
+                  f"Loss={avg_loss:.4f} Acc={acc:.4f} "
                   f"WD={train_cfg.weight_decay}")
 
         # Evaluation: aggregate to trial-level
@@ -145,7 +160,7 @@ class BaselineTrainer:
         return model, {"ground_truth": labels, "predictions": preds}
 
 
-    def train_subject(self, subj, subject_data):
+    def _train_subject(self, subj, subject_data):
         """
         Runs multiple runs for a single subject, reseeding each time.
         Returns a list of trial_results dicts.
@@ -172,7 +187,7 @@ class BaselineTrainer:
             print(f"[DEBUG] Single run {run_i+1}/{self.single_cfg.n_runs} "
                   f"for subj {subj} (seed={seed})")
 
-            _, trial_res = self.train_deep4net_model(
+            _, trial_res = self._train_deep4net_model(
                 Xtr, ytr, tid_tr,
                 Xte, yte, tid_te,
                 merged_cfg, self.single_cfg,
@@ -183,7 +198,7 @@ class BaselineTrainer:
         return results_runs
 
 
-    def train_pooled(self):
+    def _train_pooled(self):
         """
         Runs multiple pooled runs, reseeding each time.
         Returns a list of trial_results dicts.
@@ -221,7 +236,7 @@ class BaselineTrainer:
             torch.manual_seed(seed)
             print(f"[DEBUG] Pooled run {run_i+1}/{self.pooled_cfg.n_runs} (seed={seed})")
 
-            _, trial_res = self.train_deep4net_model(
+            _, trial_res = self._train_deep4net_model(
                 Xtr, ytr, tid_tr,
                 Xte, yte, tid_te,
                 merged_cfg, self.pooled_cfg,
@@ -238,13 +253,13 @@ class BaselineTrainer:
         """
         single_res = {}
         for subj, data in self.preprocessed_data.items():
-            single_res[subj] = self.train_subject(subj, data)
+            single_res[subj] = self._train_subject(subj, data)
         os.makedirs(os.path.dirname(self.single_results_path), exist_ok=True)
         with open(self.single_results_path, "wb") as f:
             pickle.dump(single_res, f)
         logger.info(f"Single-subject training results are saved.")
 
-        pooled_res = self.train_pooled()
+        pooled_res = self._train_pooled()
         os.makedirs(os.path.dirname(self.pooled_results_path), exist_ok=True)
         with open(self.pooled_results_path, "wb") as f:
             pickle.dump(pooled_res, f)

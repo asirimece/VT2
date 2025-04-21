@@ -1,5 +1,5 @@
 experiment:
-  preprocessed_file: "outputs/preprocessed_data.pkl"
+  preprocessed_file: "dump/preprocessed_data.pkl"
   features_file: "dump/features.pkl"
   
   clustering:
@@ -13,7 +13,6 @@ experiment:
     hierarchical:
       n_clusters: 4
       linkage: "ward"
-      affinity: "euclidean"
     dbscan:
       eps: 1.0
       min_samples: 5
@@ -34,7 +33,7 @@ experiment:
 
     training:
       n_runs: 3
-      seed_start:  42
+      seed_start: 42
       epochs: 100
       batch_size: 64
       learning_rate: [0.001, 0.005, 0.01]   
@@ -44,6 +43,26 @@ experiment:
         weight_decay: 0.001     
       loss: "cross_entropy"
 
+  transfer:
+    #pretrained_mtl_model: null
+    pretrained_mtl_model: "dump/trained_models/mtl_all/mtl_model_weights.pth"
+    init_from_scratch: false  # Set true to skip loading pretrained mtl model.
+    freeze_backbone: true
+    n_runs: 3
+    seed_start: 42
+    epochs: 100
+    lr: 0.001
+    weight_decay: 0.001
+    batch_size: 64
+
+    device: "cpu"
+
+    model_output_dir: "dump/trained_models/tl"
+
+    model:
+      n_outputs: 4              # Number of classes.
+      n_clusters_pretrained: 4   # Number of clusters used during MTL pretraining.
+
   evaluators:
     quantitative:
       metrics:
@@ -52,8 +71,6 @@ experiment:
         - "precision"
         - "recall"
         - "f1_score"
-        - "confusion_matrix"
-        - "roc_curve"
       cluster_metrics: ${.metrics}
 
     qualitative:
@@ -62,9 +79,16 @@ experiment:
         - "tsne"
         - "confusion_matrix"
         - "roc_curve"
+        - "cluster_scatter"
+        - "delta_by_cluster"
+        - "subject_delta_sorted"
+        - "delta_violin"
       pca_n_components: 3
       tsne:
         perplexity: 30
         n_iter:     1000
-        
-  output_dir: "./evaluation_plots/mtl"
+    mtl_output_dir: "./evaluation_plots/mtl"
+    tl_output_dir: "./evaluation_plots/tl"
+  
+  model_output_dir: "dump/mtl"
+

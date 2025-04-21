@@ -41,7 +41,7 @@ class EEGDataset(Dataset):
 class EEGMultiTaskDataset(Dataset):
     def __init__(self, data, labels, subject_ids, cluster_wrapper):
         """
-        Dataset for multi-task EEG classification.
+        Dataset for multi-task classification.
 
         Parameters:
             data (np.array): EEG samples, shape [N, channels, time].
@@ -63,3 +63,21 @@ class EEGMultiTaskDataset(Dataset):
         subject_id = self.subject_ids[index]
         cluster_id = self.cluster_wrapper.get_cluster_for_subject(subject_id)
         return sample, label, subject_id, cluster_id
+
+class TLSubjectDataset(Dataset):
+    """
+    Dataset for Transfer Learning on a new subject.
+    Expects:
+      - X: (n_subepochs, n_channels, n_times)
+      - y: (n_subepochs,)
+    """
+    def __init__(self, X, y):
+        super().__init__()
+        self.X = torch.tensor(X, dtype=torch.float32)
+        self.y = torch.tensor(y, dtype=torch.long)
+
+    def __len__(self):
+        return len(self.X)
+
+    def __getitem__(self, idx):
+        return self.X[idx], self.y[idx]
