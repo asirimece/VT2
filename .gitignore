@@ -12,20 +12,11 @@ venv/
 # Ignore all outputs and their sub‑dirs
 outputs/
 
-# Ignore all plotting/inspection dirs
-plots/
-inspection_plots/
-epoch_boundaries_inspection/
-tmin_tmax_plots/
-scaling_plots/
-mu_beta_plots/
-
 # Hydra run dirs (if outside of outputs/)
 **/.hydra/
 
 # Model checkpoints & results
-tl_outputs/
-trained_models/
+models/
 dump/
 
 # Mac, Windows files

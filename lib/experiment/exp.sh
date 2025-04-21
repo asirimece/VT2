@@ -26,7 +26,7 @@ echo "=== 1) Pretrain global MTL backbone ==="
 python train_mtl.py \
   --config-path "${MTL_CONFIG}" \
   --features-file "${FEATURES_FILE}" \
-  --out_dir "${MTL_OUT_DIR}/mtl_all"
+  --out_dir "${MTL_OUT_DIR}/mtl/all"
 
 echo "=== 2) Pretrain per‐cluster backbones (0..$((NUM_CLUSTERS-1))) ==="
 for C in $(seq 0 $((NUM_CLUSTERS-1))); do
@@ -36,7 +36,7 @@ for C in $(seq 0 $((NUM_CLUSTERS-1))); do
     --features-file "${FEATURES_FILE}" \
     --restrict_to_cluster \
     --cluster_id "${C}" \
-    --out_dir "${MTL_OUT_DIR}/mtl_cluster${C}"
+    --out_dir "${MTL_OUT_DIR}/mtl/cluster${C}"
 done
 
 echo "=== 3) Transfer‑Learning for each subject ==="

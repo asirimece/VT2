@@ -184,4 +184,4 @@ stat, p = wilcoxon(own_acc, other_acc)
 with open(os.path.join(OUTDIR,'matched_vs_mismatch.txt'),'w') as f:
     f.write(f"Wilcoxon matched vs mismatched: stat={stat:.3f}, p={p:.3e}")
 
-print(f"Finished evaluation. Outputs in '{OUTDIR}'")
+print(f"Finished evaluation. Outputs in '{OUTDIR}'") 
