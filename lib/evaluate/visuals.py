@@ -114,7 +114,7 @@ class VisualEvaluator:
             n_samples = X.shape[0]
             perplexity = cfg.get("perplexity", 30)
             if n_samples <= perplexity:
-                logger.info(f"Skipping t-SNE scatter: only {n_samples} samples ≤ perplexity={perplexity}")
+                #logger.info(f"Skipping t-SNE scatter: only {n_samples} samples ≤ perplexity={perplexity}")
                 return
             transformer = TSNE(
                 n_components=2,

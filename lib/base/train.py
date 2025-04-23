@@ -134,7 +134,6 @@ class BaselineTrainer:
         kappa = cohen_kappa_score(labels, preds)
         cm    = confusion_matrix(labels, preds)
         logger.info(f"Trial‑level Test - Acc: {acc:.4f}, Kappa: {kappa:.4f}")
-        logger.info(f"Confusion Matrix:\n{cm}")
 
         return model, {"ground_truth": labels, "predictions": preds}
 
@@ -159,7 +158,7 @@ class BaselineTrainer:
             np.random.seed(seed)
             torch.manual_seed(seed)
             logger.info(f"Single subject run {run_i+1}/{self.single_cfg.n_runs}"
-                  f"for subj {subj} (seed={seed})")
+                  f" for Subject {subj} (seed={seed})")
 
             _, trial_res = self._train_deep4net_model(
                 Xtr, ytr, tid_tr,
