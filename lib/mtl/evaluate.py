@@ -47,7 +47,6 @@ class MTLEvaluator:
         self.out_dir = out_dir
         os.makedirs(self.out_dir, exist_ok=True)
 
-        # load baseline results
         base_cfg = OmegaConf.load('config/experiment/base.yaml')
         single_wrapped = pickle.load(open(base_cfg.logging.single_results_path, 'rb'))
         pooled_wrapped = pickle.load(open(base_cfg.logging.pooled_results_path, 'rb'))

@@ -253,7 +253,6 @@ class MTLTrainer:
                 outputs = model(X, cids)
                 preds   = outputs.argmax(dim=1)
 
-                # Convert tensors to Python ints/lists
                 sids_list.extend(sids.cpu().numpy().tolist())
                 true_list.extend(y.cpu().numpy().tolist())
                 pred_list.extend(preds.cpu().numpy().tolist())

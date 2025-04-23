@@ -1,7 +1,7 @@
 
 set -euo pipefail
 
-# Directory for all experiment outputs
+
 EXP_MODELS="exp_models"
 mkdir -p "${EXP_MODELS}/mtl"
 mkdir -p "${EXP_MODELS}/tl"
@@ -54,7 +54,6 @@ for c in 0 1 2 3; do
     --freeze-backbone
 done
 
-# 6) Final evaluation
 echo "=== 6) Summarize results ==="
 python lib/experiment/summarize.py
 

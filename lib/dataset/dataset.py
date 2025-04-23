@@ -9,13 +9,11 @@ class EEGDataset(Dataset):
     def __init__(self, epochs_or_data, labels=None, trial_ids=None, transform=None, subject_id=None, session_key=None):
         self.transform = transform
         
-        # Check if the input has get_data() (i.e. an MNE Epochs object)
         if hasattr(epochs_or_data, "get_data"):
-            data = epochs_or_data.get_data()  # shape: (n_subepochs, n_channels, n_samples)
+            data = epochs_or_data.get_data()  
             self.labels = epochs_or_data.events[:, -1]
             self.trial_ids = epochs_or_data.events[:, 1]
         else:
-            # Else assume pre-computed arrays are passed in.
             data = epochs_or_data
             self.labels = labels
             self.trial_ids = trial_ids
@@ -37,7 +35,7 @@ class EEGDataset(Dataset):
 class EEGMultiTaskDataset(Dataset):
     def __init__(self, data, labels, subject_ids, cluster_wrapper):
         """
-        Dataset for multi-task classification.
+        MTL Dataset.
         """
         self.data = data
         self.labels = labels
@@ -57,7 +55,7 @@ class EEGMultiTaskDataset(Dataset):
 
 class TLSubjectDataset(Dataset):
     """
-    Dataset for transfer learning on a new subject.
+    TL Dataset.
     """
     def __init__(self, X, y):
         super().__init__()

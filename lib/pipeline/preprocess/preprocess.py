@@ -35,8 +35,6 @@ class Preprocessor:
 
             train_raw, test_raw = data_split_concatenate(subj_data, train_session, test_session)
 
-            # Process training session
-            logger.info(f"Processing training session: {train_session}")
             train_raw = bandpass_filter(
                 train_raw,
                 low=self.preproc_config.raw_preprocessors.bandpass_filter.kwargs.low,
@@ -59,13 +57,11 @@ class Preprocessor:
             # Select only EEG channels.
             train_raw.pick_types(eeg=True, stim=False, exclude=[])
             train_macro_epochs = create_macro_epochs(train_raw, self.preproc_config)
-            logger.info(f"Macro epochs: shape={train_macro_epochs.get_data().shape}, tmin={train_macro_epochs.tmin}, tmax={train_macro_epochs.tmax}")
             train_sub_epochs = crop_subepochs(
                 train_macro_epochs,
                 self.preproc_config.epoching.kwargs.crop_window_length,
                 self.preproc_config.epoching.kwargs.crop_step_size
             )
-            logger.info(f"Sub-epochs: shape={train_sub_epochs.get_data().shape}")
 
             standardized_train, esm_params = exponential_moving_standardization(
                 train_sub_epochs,
@@ -73,10 +69,7 @@ class Preprocessor:
                 eps=self.preproc_config.exponential_moving_standardization.kwargs.eps,
                 return_params=True
             )
-            logger.info("Applied ESM on training data and extracted parameters.")
 
-            # Process test session
-            logger.info(f"Processing test session: {test_session}")
             test_raw = bandpass_filter(
                 test_raw,
                 low=self.preproc_config.raw_preprocessors.bandpass_filter.kwargs.low,
@@ -98,13 +91,11 @@ class Preprocessor:
 
             test_raw.pick_types(eeg=True, stim=False, exclude=[])
             test_macro_epochs = create_macro_epochs(test_raw, self.preproc_config)
-            logger.info(f"Test macro epochs: shape={test_macro_epochs.get_data().shape}, tmin={test_macro_epochs.tmin}, tmax={test_macro_epochs.tmax}")
             test_sub_epochs = crop_subepochs(
                 test_macro_epochs,
                 self.preproc_config.epoching.kwargs.crop_window_length,
                 self.preproc_config.epoching.kwargs.crop_step_size
             )
-            logger.info(f"Test sub-epochs: shape={test_sub_epochs.get_data().shape}")
 
             standardized_test = exponential_moving_standardization(
                 test_sub_epochs,
@@ -112,7 +103,6 @@ class Preprocessor:
                 eps=self.preproc_config.exponential_moving_standardization.kwargs.eps,
                 esm_params=esm_params
             )
-            logger.info("Applied ESM on test data using training parameters.")
             
             results[subj] = {
                 train_session: standardized_train,

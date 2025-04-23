@@ -48,7 +48,6 @@ class BaselineTrainer:
         self.single_results_path = self.base_config.logging.single_results_path
         self.pooled_results_path = self.base_config.logging.pooled_results_path
 
-        # Load preprocessed data
         with open(self.base_config.data.preprocessed_data, "rb") as f:
             self.preprocessed_data = pickle.load(f)
 

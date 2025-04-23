@@ -18,7 +18,6 @@ class MultiTaskDeep4Net(nn.Module):
             final_conv_length="auto",
             **backbone_kwargs
         )
-        # Compute backbone feature dimension
         dummy_input = torch.zeros(1, n_chans, window_samples)
         with torch.no_grad():
             dummy_features = self.shared_backbone(dummy_input)
@@ -31,7 +30,7 @@ class MultiTaskDeep4Net(nn.Module):
         })
 
     def forward(self, x, cluster_ids):
-        features = self.shared_backbone(x)  # batch, feature_dim
+        features = self.shared_backbone(x) 
         if isinstance(cluster_ids, int) or (torch.is_tensor(cluster_ids) and cluster_ids.unique().numel() == 1):
             head = self.heads[str(int(cluster_ids if isinstance(cluster_ids, int) else cluster_ids[0]))]
             output = head(features)

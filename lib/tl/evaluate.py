@@ -50,7 +50,7 @@ class TLEvaluator:
             self.baseline_wrapper = None
             logger.warning(f"Skipped loading baseline results: {e}")
 
-        # Load MTL wrapper (mtl_wrapper.pkl)
+        # Load MTL wrapper.
         try:
             mtl_path = os.path.join(self.cfg.mtl.mtl_model_output, "mtl_wrapper.pkl")
             with open(mtl_path, "rb") as f:
@@ -157,7 +157,7 @@ class TLEvaluator:
             runs_b = b_dict.get(subj, [])
 
             for i in range(min(len(runs_a), len(runs_b))):
-                # Handle TLWrapper object
+                # Handle TLWrapper 
                 if hasattr(runs_a[i], "ground_truth"):
                     gt_a = runs_a[i].ground_truth
                     pr_a = runs_a[i].predictions

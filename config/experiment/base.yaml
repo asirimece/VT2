@@ -1,3 +1,5 @@
+type: base
+
 data:
   preprocessed_data: "./dump/preprocessed_data.pkl"
 

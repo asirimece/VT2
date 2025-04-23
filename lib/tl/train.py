@@ -112,7 +112,7 @@ class TLTrainer:
             window_samples=window_samples
         )
 
-        # Load pretrained MTL weights
+        # Load pretrained MTL weights.
         if self._pretrained_weights is not None:
             model.load_state_dict(self._pretrained_weights)
             logger.info("Loaded pretrained MTL weights into TL model.")

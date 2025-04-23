@@ -132,7 +132,7 @@ class VisualEvaluator:
         plt.title(f"{title} colored by cluster")
         plt.xlabel(f"{method.upper()} 1")
         plt.ylabel(f"{method.upper()} 2")
-        # Legend
+
         handles, _ = scatter.legend_elements()
         unique_lbls = sorted(set(labels.tolist()))
         plt.legend(handles, unique_lbls, title="Cluster")
@@ -175,7 +175,7 @@ class VisualEvaluator:
     def plot_subject_delta_sorted(self, df_cmp_subj: "pd.DataFrame"):
         if "subject_delta_sorted" not in self.visualizations:
             return
-        # compute mean Δ per subject (absolute)
+
         df_mean = (
             df_cmp_subj
             .groupby("subject")["accuracy_delta"]

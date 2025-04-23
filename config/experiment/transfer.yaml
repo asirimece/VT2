@@ -1,3 +1,5 @@
+type: transfer
+
 experiment:
   preprocessed_file: "dump/preprocessed_data.pkl"
   features_file: "dump/features.pkl"
@@ -64,7 +66,7 @@ experiment:
     tl_model_output: "dump/trained_models/tl"
 
     model:
-      n_outputs: 4              # Number of classes.
+      n_outputs: 4             
       n_clusters_pretrained: 4   # Number of clusters used during MTL pretraining.
 
   evaluators:

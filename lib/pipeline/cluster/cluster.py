@@ -46,7 +46,7 @@ class SubjectClusterer:
         subject_repr = {}
         for subj, sessions in self.features.items():
             reps = [sess['combined'] for sess in sessions.values()]
-            reps_concat = np.concatenate(reps, axis=0)  # n_trials, n_features
+            reps_concat = np.concatenate(reps, axis=0)  
             subject_repr[subj] = np.mean(reps_concat, axis=0)
         return subject_repr
 
