@@ -28,12 +28,12 @@ def run(config: DictConfig) -> None:
    #logger.info(f"Features saved to: {config.transform.output_file}")
    
    # STEP 3, 4: Cluster and MTL
-   #trainer = MTLTrainer(config.experiment, config.model)
-   #mtl_wrapper = trainer.run()
+   trainer = MTLTrainer(config.experiment, config.model)
+   mtl_wrapper = trainer.run()
    
-   #evaluator = MTLEvaluator(mtl_wrapper, config)
-   #evaluator.evaluate()
-   #logger.info("MTL evaluation complete.")
+   evaluator = MTLEvaluator(mtl_wrapper, config)
+   evaluator.evaluate()
+   logger.info("MTL evaluation complete.")
    
    # STEP 5: TL
    tl_wrapper = TLTrainer(config).run()
