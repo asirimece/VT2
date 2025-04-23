@@ -8,17 +8,11 @@ logger = logger.get()
 
 
 def bandpass_filter(raw, low, high, method):
-    """
-    Apply a bandpass filter to the raw data.
-    """
     raw_filtered = raw.copy().filter(l_freq=low, h_freq=high, method=method, verbose=False)
     return raw_filtered
 
 
 def apply_notch_filter(raw, notch_freq):
-    """
-    Apply a notch filter to remove power-line noise.
-    """
     raw_notched = raw.copy().notch_filter(freqs=[notch_freq], verbose=False)
     return raw_notched
 
@@ -41,7 +35,6 @@ def remove_eog_artifacts_ica(raw, eog_ch, n_components, method, random_state,
                                 method=method,
                                 random_state=random_state,
                                 verbose=False)
-    logger.info(f"[ICA] Fitting ICA with {n_components} components (method={method}).")
     ica.fit(raw)
 
     eog_inds_total = []
@@ -62,17 +55,14 @@ def remove_eog_artifacts_ica(raw, eog_ch, n_components, method, random_state,
             for i, fig in enumerate(figs_components):
                 out_path = os.path.join(abs_plots_output_dir, f"ica_components_{fig_label}_page{i}.png")
                 fig.savefig(out_path)
-                logger.info(f"Saved ICA components figure to {out_path}")
         else:
             out_path = os.path.join(abs_plots_output_dir, f"ica_components_{fig_label}.png")
             figs_components.savefig(out_path)
-            logger.info(f"Saved ICA components figure to {out_path}")
 
     fig_sources = ica.plot_sources(raw, show=show_ica_plots)
     if save_ica_plots and fig_sources:
         out_path = os.path.join(abs_plots_output_dir, f"ica_sources_{fig_label}.png")
         fig_sources.savefig(out_path)
-        logger.info(f"Saved ICA sources figure to {out_path}")
 
     ica.apply(raw)
     logger.info(f"[ICA] Applied ICA. Excluded {len(ica.exclude)} components.")
@@ -81,15 +71,10 @@ def remove_eog_artifacts_ica(raw, eog_ch, n_components, method, random_state,
 
 
 def data_split_concatenate(subj_data, train_session, test_session):
-    """
-    Split the subject data into training and testing sessions.
-    If a session contains multiple runs, all runs are concatenated.
-    """
     train_data = subj_data.get(train_session)
     if isinstance(train_data, dict):
         runs = list(train_data.values())
         if len(runs) > 1:
-            logger.info(f"Multiple runs for training session '{train_session}'. Concatenating: {list(train_data.keys())}.")
             train_raw = mne.concatenate_raws(runs)
         else:
             train_raw = runs[0]
@@ -100,7 +85,6 @@ def data_split_concatenate(subj_data, train_session, test_session):
     if isinstance(test_data, dict):
         runs = list(test_data.values())
         if len(runs) > 1:
-            logger.info(f"Multiple runs for testing session '{test_session}'. Concatenating: {list(test_data.keys())}.")
             test_raw = mne.concatenate_raws(runs)
         else:
             test_raw = runs[0]
@@ -111,13 +95,6 @@ def data_split_concatenate(subj_data, train_session, test_session):
 
 
 def exponential_moving_standardization(epochs, smoothing_factor, eps, esm_params=None, return_params=False):
-    """
-    Standardize epochs using an exponential moving standardization approach.
-    
-    - In training mode (esm_params is None), compute initial means and variances.
-    - In test mode, use the provided esm_params.
-    - If return_params is True, return (standardized_epochs, esm_params).
-    """
     data = epochs.get_data()
     n_epochs, n_channels, n_times = data.shape
     standardized_data = np.zeros_like(data)

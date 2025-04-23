@@ -74,7 +74,7 @@ def main():
     os.makedirs(args.out_dir, exist_ok=True)
     trainer = TLTrainer(cfg)
     trainer.run()
-    logger.info(f"TL weights saved to {args.out_dir}")
+    logger.info(f"TL weights saved to: {args.out_dir}")
 
 if __name__ == "__main__":
     main()

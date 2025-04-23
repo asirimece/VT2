@@ -83,7 +83,7 @@ def main():
     wpath = os.path.join(out_dir, f"mtl_weights_{suffix}.pth")
     sd = convert_state_dict_keys(trainer.model.state_dict())
     torch.save(sd, wpath)
-    logger.info(f"MTL weights saved to {wpath}")
+    logger.info(f"MTL weights saved to: {wpath}")
 
 if __name__=="__main__":
     main()

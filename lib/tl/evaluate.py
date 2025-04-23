@@ -55,14 +55,12 @@ class TLEvaluator:
             mtl_path = os.path.join(self.cfg.mtl.mtl_model_output, "mtl_wrapper.pkl")
             with open(mtl_path, "rb") as f:
                 mtl_wrapper = pickle.load(f)
-                logger.info(f"[DEBUG] Loaded MTL weights from {mtl_path}")
             self.mtl_results = mtl_wrapper.results_by_subject
         except Exception as e:
             self.mtl_results = None
             logger.warning(f"MTL loading skipped: {e}")
 
     def evaluate(self):
-        logger.info("Evaluating TL performance")
         rows = []
 
         for subj, runs in self.tl_results.items():
@@ -100,14 +98,14 @@ class TLEvaluator:
 
         # TL vs Baseline
         if self.baseline_results:
-            logger.info("Comparing TL to Baseline...")
+            logger.info("Comparing TL to Baseline.")
             cmp_df = self._compare_wrappers(self.tl_results, self.baseline_results, "tl", "baseline")
             cmp_df.to_csv(os.path.join(self.out_dir, "tl_vs_baseline.csv"), index=False)
             outputs["tl_vs_baseline"] = cmp_df
 
         # MTL vs TL vs Baseline
         if self.baseline_results and self.mtl_results:
-            logger.info("Comparing TL vs MTL vs Baseline...")
+            logger.info("Comparing TL vs MTL vs Baseline.")
 
             def flatten(source_dict, label):
                 data = []

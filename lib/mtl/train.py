@@ -103,8 +103,7 @@ class MTLTrainer:
             mask_te = np.array([assignments[s] == exp.cluster_id for s in sid_te])
             X_tr, y_tr, sid_tr = X_tr[mask_tr], y_tr[mask_tr], sid_tr[mask_tr]
             X_te, y_te, sid_te = X_te[mask_te], y_te[mask_te], sid_te[mask_te]
-            logger.info(f"Restricted MTL data to cluster {exp.cluster_id}: "
-                        f"{X_tr.shape[0]} train samples, {X_te.shape[0]} test samples")
+            logger.info(f"Restricted MTL data to cluster {exp.cluster_id}: ")
 
         train_ds = EEGMultiTaskDataset(X_tr, y_tr, sid_tr, cluster_wrapper)
         eval_ds  = EEGMultiTaskDataset(X_te, y_te, sid_te, cluster_wrapper)

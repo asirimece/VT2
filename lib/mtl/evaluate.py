@@ -210,8 +210,6 @@ class MTLEvaluator:
                 df_cmp_subj[f'{metric}_mtl'] - df_cmp_subj[f'{metric}_base']
             )
         df_cmp_subj.to_csv(os.path.join(self.out_dir, 'mtl_vs_baseline_subject_run.csv'), index=False)
-        logger.info('Saved subject/run deltas to %s',
-                    os.path.join(self.out_dir, 'mtl_vs_baseline_subject_run.csv'))
 
         df_cmp_cl = df_cl_run.merge(df_base_cl_run,
                                     on=['cluster','run'],
@@ -221,8 +219,6 @@ class MTLEvaluator:
                 df_cmp_cl[f'{metric}_mtl'] - df_cmp_cl[f'{metric}_base']
             )
         df_cmp_cl.to_csv(os.path.join(self.out_dir, 'mtl_vs_baseline_cluster_run.csv'), index=False)
-        logger.info('Saved cluster/run deltas to %s',
-                    os.path.join(self.out_dir, 'mtl_vs_baseline_cluster_run.csv'))
 
         df_cmp_pool = df_pool_run.merge(df_base_pool_run,
                                         on='run',
@@ -232,9 +228,6 @@ class MTLEvaluator:
                 df_cmp_pool[f'{metric}_mtl'] - df_cmp_pool[f'{metric}_base']
             )
         df_cmp_pool.to_csv(os.path.join(self.out_dir, 'mtl_vs_baseline_pooled_run.csv'), index=False)
-        logger.info('Saved pooled/run deltas to %s',
-                    os.path.join(self.out_dir, 'mtl_vs_baseline_pooled_run.csv'))
-
 
         plt.figure(figsize=(6,4))
         plt.plot(df_cmp_pool['run'], df_cmp_pool['accuracy_mtl'],
