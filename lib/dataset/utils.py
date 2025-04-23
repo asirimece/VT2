@@ -30,4 +30,3 @@ def save_features(features, config, filename="./features.pkl"):
     
     with open(new_filename, "wb") as f:
         pickle.dump(features, f)
-    print(f"Features saved to {new_filename}")

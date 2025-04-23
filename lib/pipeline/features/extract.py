@@ -1,5 +1,3 @@
-# lib/pipeline/features/extract.py
-
 import numpy as np
 import mne
 from mne.decoding import CSP
@@ -9,8 +7,6 @@ from sklearn.preprocessing import StandardScaler
 import pickle
 from lib.logging import logger
 from omegaconf import DictConfig
-
-# for global transforms
 from sklearn.decomposition import PCA
 from sklearn.svm import SVC
 from sklearn.feature_selection import RFECV
@@ -20,7 +16,6 @@ logger = logger.get()
 
 class FeatureExtractor:
     def __init__(self, feat_cfg: DictConfig):
-        # feat_cfg is the 'transform.feature_extraction' node from your Hydra config
         self.config = feat_cfg
 
     def extract_erd_ers(self, epochs):
@@ -38,9 +33,9 @@ class FeatureExtractor:
             return np.searchsorted(times, sec_clamped)
 
         b_start = time_to_index(baseline_window[0])
-        b_end   = time_to_index(baseline_window[1])
+        b_end = time_to_index(baseline_window[1])
         a_start = time_to_index(analysis_window[0])
-        a_end   = time_to_index(analysis_window[1])
+        a_end = time_to_index(analysis_window[1])
 
         n_epochs = data.shape[0]
         n_bands = len(frequency_bands)
@@ -118,7 +113,6 @@ class FeatureExtractor:
     def feature_extraction(self, epochs):
         """
         Extract and concatenate raw features (FBCSP + Riemannian) per epoch.
-        Returns X_raw (n_epochs, D_raw) and y (n_epochs,)
         """
         feats = []
         for m in self.config.methods:
@@ -129,7 +123,6 @@ class FeatureExtractor:
             else:
                 logger.warning(f"Unsupported method {m['name']}")
 
-        # scale each block separately, then concatenate
         scaler = StandardScaler()
         normed = [scaler.fit_transform(f) for f in feats]
         combined = np.concatenate(normed, axis=1)
@@ -139,23 +132,16 @@ class FeatureExtractor:
 
     @staticmethod
     def run(config: DictConfig, preprocessed_data):
-        """
-        Full pipeline: extract raw, optional PCA, global RFECV on train, transform all.
-        Returns nested dict of selected features and labels.
-        """
         feat_cfg = config.transform.feature_extraction
         extractor = FeatureExtractor(feat_cfg)
-
-        # STEP 1: extract raw features for all
+        
         raw_feats = {}
         for subj, sessions in preprocessed_data.items():
             raw_feats[subj] = {}
             for sess_label, epochs in sessions.items():
-                logger.info(f"Extracting raw features for subject {subj}, session {sess_label}")
                 X_raw, y = extractor.feature_extraction(epochs)
                 raw_feats[subj][sess_label] = {"combined": X_raw, "labels": y}
 
-        # STEP 2: pool train data for global transforms
         X_train_list, y_train_list = [], []
         for subj, sessions in raw_feats.items():
             for sess_label, d in sessions.items():
@@ -165,7 +151,6 @@ class FeatureExtractor:
         X_pool = np.vstack(X_train_list)
         y_pool = np.concatenate(y_train_list)
 
-        # STEP 3: optional PCA check
         D_pool = X_pool.shape[1]
         pca_cfg = getattr(config.transform, 'dimensionality_reduction', None)
         threshold = getattr(pca_cfg, 'threshold', 300) if pca_cfg else 300
@@ -173,20 +158,17 @@ class FeatureExtractor:
             if pca_cfg and 'n_components' in pca_cfg.kwargs:
                 n_comp = pca_cfg.kwargs.n_components
                 pca = PCA(n_components=n_comp)
-                logger.info(f"PCA: reducing {D_pool} → {n_comp}")
             else:
                 var = pca_cfg.kwargs.get('explained_variance', 0.95) if pca_cfg else 0.95
                 pca = PCA(n_components=var)
-                logger.info(f"PCA: reducing {D_pool} to {int(var*100)}% variance")
             pca.fit(X_pool)
             X_pool = pca.transform(X_pool)
             for subj, sessions in raw_feats.items():
                 for label, d in sessions.items():
                     d['combined'] = pca.transform(d['combined'])
         else:
-            logger.info(f"Skipping PCA: {D_pool} dims <= {threshold}")
+            logger.info(f"Skipped PCA: {D_pool} dims <= {threshold}")
 
-        # STEP 4: global RFECV on train
         fs_cfg = config.transform.feature_selection.kwargs
         svc = SVC(kernel='linear', C=fs_cfg.get('svc_C', 1.0), random_state=42)
         rfecv = RFECV(
@@ -201,7 +183,6 @@ class FeatureExtractor:
         rfecv.fit(X_pool, y_pool)
         logger.info(f"RFECV complete: {rfecv.n_features_} features selected")
 
-        # STEP 5: apply RFECV to all sessions
         selected = {}
         for subj, sessions in raw_feats.items():
             selected[subj] = {}
@@ -211,9 +192,6 @@ class FeatureExtractor:
 
         return selected
 
-
 def save_features(features, filename):
-    """Save the features dict to disk as pickle"""
     with open(filename, 'wb') as f:
         pickle.dump(features, f)
-    print(f"Features saved to {filename}")

@@ -106,7 +106,7 @@ class BaselineTrainer:
 
             avg_loss = total_loss / total
             acc      = correct / total
-            logger.info(f"Epoch {epoch+1}/{train_cfg.epochs} "
+            logger.info(f"[BaselineTrainer] Epoch {epoch+1}/{train_cfg.epochs} "
                   f"Loss={avg_loss:.4f} Acc={acc:.4f} "
                   f"WD={train_cfg.weight_decay}")
 
@@ -134,7 +134,7 @@ class BaselineTrainer:
         acc   = accuracy_score(labels, preds)
         kappa = cohen_kappa_score(labels, preds)
         cm    = confusion_matrix(labels, preds)
-        logger.info(f"Trial‑level Test → Acc: {acc:.4f}, Kappa: {kappa:.4f}")
+        logger.info(f"Trial‑level Test - Acc: {acc:.4f}, Kappa: {kappa:.4f}")
         logger.info(f"Confusion Matrix:\n{cm}")
 
         return model, {"ground_truth": labels, "predictions": preds}

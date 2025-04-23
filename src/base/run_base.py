@@ -10,18 +10,16 @@ logger = logger.get()
 
 def run(config: DictConfig) -> None: 
    logger.info("==== Starting baseline model training. ====")
-   # STEP 1: Preprocessing
-   #preprocessor = Preprocessor(config)
-   #preprocessed_data = preprocessor.run()
+   preprocessor = Preprocessor(config)
+   preprocessed_data = preprocessor.run()
    
-   #save_preprocessed_data(preprocessed_data, config.dataset.preprocessing.output_file)
-   #logger.info(f"Preprocessed data saved to: {config.dataset.preprocessing.output_file}")
+   save_preprocessed_data(preprocessed_data, config.dataset.preprocessing.output_file)
+   logger.info(f"Preprocessed data saved to: {config.dataset.preprocessing.output_file}")
    
-   # STEP 2: Baseline Model Training
    trainer = BaselineTrainer()  
    training_results = trainer.run()  
    logger.info("Baseline model training complete.")
 
-   # STEP 3: Evaluation
    evaluator = BaselineEvaluator(config.experiment.evaluators)
    evaluator.evaluate_all(training_results)
+   

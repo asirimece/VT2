@@ -31,7 +31,7 @@ def main():
     feats_dict = pickle.load(open(feats_path, "rb"))
 
     # 2) Cluster config + clustering
-    clust_cfg = yaml.safe_load(open("config/experiment/mtl.yaml"))["experiment"]["clustering"]
+    clust_cfg = yaml.safe_load(open("config/experiment/transfer.yaml"))["experiment"]["clustering"]
     clusterer = SubjectClusterer(feats_path, clust_cfg)
     cw = clusterer.cluster_subjects(method=clust_cfg["method"])
 
@@ -47,13 +47,10 @@ def main():
     X = np.stack(vecs)
     y = np.array(labels, dtype=int)
 
-    # 4) PCA → 2D
     X2 = PCA(n_components=2).fit_transform(X)
 
-    # 5) Plot setup
     os.makedirs("evaluation", exist_ok=True)
     plt.figure(figsize=(8,6))
-    # four distinct colors
     palette = ["tab:blue","tab:orange","tab:green","tab:red"]
     for cluster_id in range(4):
         idx = np.where(y == cluster_id)[0]

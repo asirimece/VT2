@@ -1,2 +1,2 @@
 scratch vs cluster3: stat=6.000, p=5.469e-02
-global  vs cluster3: stat=5.000, p=3.906e-02
+global  vs cluster3: stat=21.000, p=9.102e-01

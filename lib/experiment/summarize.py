@@ -9,22 +9,21 @@ from sklearn.metrics import accuracy_score, cohen_kappa_score, confusion_matrix
 import yaml
 from lib.pipeline.cluster.cluster import SubjectClusterer
 
-# ─── CONFIG ────────────────────────────────────────────────────────────────
+
 PIPELINE_ROOTS = {
     'scratch': 'models/tl/scratch',
     'global':  'models/tl/global',
-    # one folder per cluster backbone, e.g. cluster0, cluster1, cluster2, ...
     'cluster0': 'models/tl/cluster0',
     'cluster1': 'models/tl/cluster1',
     'cluster2': 'models/tl/cluster2',
     'cluster3': 'models/tl/cluster3',
 }
+
 SUBJECTS = [1,2,3,4,5,6,7,8,9]
 N_RUNS    = 3
 OUTDIR    = 'evaluation'
 os.makedirs(OUTDIR, exist_ok=True)
 
-# ─── 1) LOAD ALL WRAPPERS & COMPUTE METRICS ─────────────────────────────────
 records = []
 for pipeline, root in PIPELINE_ROOTS.items():
     for run in range(N_RUNS):
@@ -32,7 +31,6 @@ for pipeline, root in PIPELINE_ROOTS.items():
         for subj in SUBJECTS:
             pkl_path = os.path.join(run_dir, f'tl_{subj}_results.pkl')
             if not os.path.isfile(pkl_path):
-                print(f"[WARN] Missing {pkl_path}, skipping")
                 continue
             wrapper = pickle.load(open(pkl_path, 'rb'))
             gt, pr = wrapper.ground_truth, wrapper.predictions
@@ -46,12 +44,12 @@ for pipeline, root in PIPELINE_ROOTS.items():
             })
 
 if not records:
-    raise RuntimeError("No data found—check your PIPELINE_ROOTS & directory structure")
+    raise RuntimeError("No data found.")
 
 df = pd.DataFrame(records)
 df.to_csv(os.path.join(OUTDIR, 'summary_raw.csv'), index=False)
 
-# ─── 2) BOXPLOTS FOR ACCURACY & KAPPA ───────────────────────────────────────
+
 plt.figure()
 df.boxplot(column='accuracy', by='pipeline')
 plt.title('TL Accuracy by Pipeline'); plt.suptitle('')
@@ -62,16 +60,14 @@ df.boxplot(column='kappa', by='pipeline')
 plt.title('TL Cohen Kappa by Pipeline'); plt.suptitle('')
 plt.savefig(os.path.join(OUTDIR, 'kappa_boxplot.png'))
 
-# ─── 3) SCATTER & WILCOXON: SCRATCH VS GLOBAL ──────────────────────────────
-# scratch vs global (once)
+# scratch vs global 
 arr_s = df[df.pipeline=='scratch'].groupby('subject')['accuracy'].mean()
 arr_g = df[df.pipeline=='global' ].groupby('subject')['accuracy'].mean()
 stat, p = wilcoxon(arr_s, arr_g)
 with open(os.path.join(OUTDIR,'wilcoxon_scratch_vs_global.txt'),'w') as f:
     f.write(f"scratch vs global: stat={stat:.3f}, p={p:.3e}\n")
-print(f"scratch vs global: p={p:.3e}")
 
-# ─── 4) FOR EACH CLUSTERX: SCATTER & WILCOXON ───────────────────────────────
+
 cluster_pipelines = sorted([pid for pid in PIPELINE_ROOTS if pid.startswith('cluster')])
 for pid in cluster_pipelines:
     # scatter global vs clusterX
@@ -95,9 +91,8 @@ for pid in cluster_pipelines:
     with open(os.path.join(OUTDIR, f'wilcoxon_{pid}.txt'),'w') as f:
         f.write(f"scratch vs {pid}: stat={stat_s_c:.3f}, p={p_s_c:.3e}\n")
         f.write(f"global  vs {pid}: stat={stat_g_c:.3f}, p={p_g_c:.3e}\n")
-    print(f"{pid}: scratch→p={p_s_c:.3e}, global→p={p_g_c:.3e}")
 
-# ─── 5) AVERAGE CONFUSION MATRICES ─────────────────────────────────────────
+
 for pipeline in PIPELINE_ROOTS:
     cms = [r['confusion_matrix'] for r in records if r['pipeline']==pipeline]
     if not cms: continue
@@ -112,8 +107,8 @@ for pipeline in PIPELINE_ROOTS:
     plt.xlabel('Predicted'); plt.ylabel('True')
     plt.savefig(os.path.join(OUTDIR, f'cm_{pipeline}.png'))
 
-# ─── 6) PERFORMANCE BY ORIGINAL CLUSTER MEMBERSHIP ─────────────────────────
-clus_cfg      = yaml.safe_load(open('config/experiment/mtl.yaml'))['experiment']['clustering']
+# Performance by own cluster
+clus_cfg      = yaml.safe_load(open('config/experiment/transfer.yaml'))['experiment']['clustering']
 cluster_map   = SubjectClusterer('dump/features.pkl', clus_cfg).cluster_subjects(method=clus_cfg['method']).labels
 df['cluster'] = df['subject'].map(cluster_map)
 
@@ -126,9 +121,8 @@ groups = [g['accuracy'].values for _,g in df.groupby('cluster')]
 stat_kw, p_kw = kruskal(*groups)
 with open(os.path.join(OUTDIR,'kruskal_clusters.txt'),'w') as f:
     f.write(f"Kruskal-Wallis: stat={stat_kw:.3f}, p={p_kw:.3e}\n")
-print(f"Kruskal-Wallis across clusters: p={p_kw:.3e}")
 
-# ─── 7) MATCHED vs MISMATCHED CLUSTER‑BACKBONES ────────────────────────────
+# Matched vs mismached cluster backbone
 own_accs, other_accs = [], []
 for subj in SUBJECTS:
     own_id = cluster_map[subj]
@@ -154,6 +148,4 @@ plt.savefig(os.path.join(OUTDIR,'matched_vs_mismatch_scatter.png'))
 stat_mm, p_mm = wilcoxon(own_accs, other_accs)
 with open(os.path.join(OUTDIR,'wilcoxon_matched_vs_mismatched.txt'),'w') as f:
     f.write(f"matched vs mismatched: stat={stat_mm:.3f}, p={p_mm:.3e}\n")
-print(f"Matched vs mismatched: p={p_mm:.3e}")
-
-print("✅ Finished evaluation → outputs in", OUTDIR)
+    

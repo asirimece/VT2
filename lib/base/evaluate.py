@@ -100,10 +100,8 @@ class BaselineEvaluator:
             filename="cm_pooled.png"
         )
 
-        # Save as CSV
         df = pd.DataFrame(rows)
         csv_path = os.path.join(self.output_dir, "baseline_metrics.csv")
         df.to_csv(csv_path, index=False)
-        logger.info("Saved baseline metrics → %s", csv_path)
         logger.info("\n%s", df.to_markdown(index=False))
 

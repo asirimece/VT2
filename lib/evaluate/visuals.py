@@ -1,5 +1,3 @@
-# lib/evaluate/visuals.py
-
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -14,6 +12,9 @@ from sklearn.metrics import (
     ConfusionMatrixDisplay, 
     RocCurveDisplay
 )
+from lib.logging import logger
+
+logger = logger.get()
 
 
 class VisualEvaluator:
@@ -92,43 +93,35 @@ class VisualEvaluator:
             out = os.path.join(self.output_dir, f"{filename_prefix}_class_{cls}.png")
             fig.savefig(out, bbox_inches="tight")
             plt.close(fig)
-            print(f"[DEBUG] Saved ROC curve → {out}")
 
     def plot_cluster_scatter(self,
                              subject_reprs: dict,
                              cluster_assignments: dict,
                              method: str = "pca",
                              filename: str = "cluster_scatter.png"):
-        """
-        Projects subject-level feature vectors into 2D and colors points by cluster.
-        - method: 'pca' or 'tsne'
-        - subject_reprs: {subject_id: vector}
-        - cluster_assignments: {subject_id: cluster_id}
-        """
         if "cluster_scatter" not in self.visualizations:
             return
 
-        # Prepare data
-        ids    = list(subject_reprs.keys())
-        X      = np.stack([subject_reprs[sid] for sid in ids], axis=0)
+        ids = list(subject_reprs.keys())
+        X = np.stack([subject_reprs[sid] for sid in ids], axis=0)
         labels = np.array([cluster_assignments.get(sid, -1) for sid in ids])
 
         if method.lower() == "pca":
             transformer = PCA(n_components=2)
-            title       = "PCA projection of subjects"
+            title = "PCA"
         elif method.lower() == "tsne":
-            cfg         = self.tsne_cfg
-            n_samples   = X.shape[0]
-            perplexity  = cfg.get("perplexity", 30)
+            cfg = self.tsne_cfg
+            n_samples = X.shape[0]
+            perplexity = cfg.get("perplexity", 30)
             if n_samples <= perplexity:
-                print(f"[DEBUG] Skipping t-SNE scatter: only {n_samples} samples ≤ perplexity={perplexity}")
+                logger.info(f"Skipping t-SNE scatter: only {n_samples} samples ≤ perplexity={perplexity}")
                 return
             transformer = TSNE(
                 n_components=2,
                 perplexity=cfg.get("perplexity",30),
                 n_iter=cfg.get("n_iter",1000)
             )
-            title       = "t-SNE projection of subjects"
+            title = "t-SNE"
         else:
             raise ValueError(f"Unknown method: {method}")
 
@@ -140,24 +133,19 @@ class VisualEvaluator:
         plt.xlabel(f"{method.upper()} 1")
         plt.ylabel(f"{method.upper()} 2")
         # Legend
-        handles, _    = scatter.legend_elements()
-        unique_lbls   = sorted(set(labels.tolist()))
+        handles, _ = scatter.legend_elements()
+        unique_lbls = sorted(set(labels.tolist()))
         plt.legend(handles, unique_lbls, title="Cluster")
         out = os.path.join(self.output_dir, filename.replace(".png", f"_{method}.png"))
         plt.tight_layout()
         plt.savefig(out)
         plt.close()
-        print(f"[DEBUG] Saved cluster scatter ({method}) → {out}")
     
     def plot_delta_by_cluster(
         self,
         df_cmp_subj: pd.DataFrame,
         cluster_assignments: dict | None = None
     ):
-        """
-        Boxplot of accuracy_delta grouped by cluster.
-        If df_cmp_subj lacks a 'cluster' column, we map via cluster_assignments.
-        """
         if "delta_by_cluster" not in self.visualizations:
             return
 
@@ -165,8 +153,7 @@ class VisualEvaluator:
         if "cluster" not in df.columns:
             if cluster_assignments is None:
                 raise ValueError(
-                    "plot_delta_by_cluster needs either a 'cluster' column "
-                    "in your DataFrame or a cluster_assignments dict."
+                    "[plot_delta_by_cluster] needs a 'cluster' column or a cluster_assignments dict."
                 )
             df["cluster"] = df["subject"].map(cluster_assignments)
 
@@ -177,17 +164,15 @@ class VisualEvaluator:
             data=df,
             palette="pastel"
         )
-        plt.title("Accuracy Δ by Cluster (MTL − Baseline)")
+        plt.title("Accuracy by Cluster (MTL − Baseline)")
         plt.xlabel("Cluster")
         plt.ylabel("Δ Accuracy")
-        out = os.path.join(self.output_dir, "delta_by_cluster_boxplot.png")
+        out = os.path.join(self.output_dir, "delta_accuracy_by_cluster.png")
         plt.tight_layout()
         plt.savefig(out)
         plt.close()
-        print(f"[DEBUG] Saved Δ by cluster → {out}")
 
     def plot_subject_delta_sorted(self, df_cmp_subj: "pd.DataFrame"):
-        """Bar chart of |accuracy_delta| sorted by absolute Δ per subject."""
         if "subject_delta_sorted" not in self.visualizations:
             return
         # compute mean Δ per subject (absolute)
@@ -206,17 +191,15 @@ class VisualEvaluator:
             color="skyblue"
         )
         plt.xticks(rotation=90)
-        plt.title("Subject |Δ Accuracy| (MTL vs Baseline), sorted")
+        plt.title("Subject |Δ Accuracy| (MTL vs Baseline)")
         plt.xlabel("Subject")
         plt.ylabel("|Δ Accuracy|")
-        out = os.path.join(self.output_dir, "subject_delta_sorted.png")
+        out = os.path.join(self.output_dir, "subject_delta_accuracy_sorted.png")
         plt.tight_layout()
         plt.savefig(out)
         plt.close()
-        print(f"[DEBUG] Saved subject‐sorted Δ → {out}")
 
     def plot_delta_violin(self, df_cmp_subj: "pd.DataFrame"):
-        """Violin plot of the full distribution of Δ‑accuracy."""
         if "delta_violin" not in self.visualizations:
             return
         plt.figure(figsize=(6,4))
@@ -227,26 +210,19 @@ class VisualEvaluator:
         )
         plt.title("Distribution of Δ Accuracy (MTL − Baseline)")
         plt.ylabel("Δ Accuracy")
-        out = os.path.join(self.output_dir, "delta_violin.png")
+        out = os.path.join(self.output_dir, "delta_accuracy_violin.png")
         plt.tight_layout()
         plt.savefig(out)
         plt.close()
-        print(f"[DEBUG] Saved Δ violin → {out}")
 
     def visualize(self,
-                  features:      np.ndarray = None,
-                  labels:        np.ndarray = None,
-                  predictions:   np.ndarray = None,
+                  features: np.ndarray = None,
+                  labels: np.ndarray = None,
+                  predictions: np.ndarray = None,
                   probabilities: np.ndarray = None,
-                  subject_reprs: dict       = None,
+                  subject_reprs: dict = None,
                   cluster_assignments: dict = None):
-        """
-        Dispatch to whichever plots are configured:
-          - features+labels → PCA/t-SNE
-          - labels+predictions → confusion
-          - labels+probabilities → ROC
-          - subject_reprs+cluster_assignments → cluster scatter
-        """
+
         if features is not None and labels is not None:
             self.plot_pca(features, labels)
             self.plot_tsne(features, labels)
@@ -258,6 +234,5 @@ class VisualEvaluator:
             self.plot_roc_curve(labels, probabilities)
 
         if subject_reprs is not None and cluster_assignments is not None:
-            # produce both PCA‑ and t‑SNE‑based scatter
             self.plot_cluster_scatter(subject_reprs, cluster_assignments, method="pca")
             self.plot_cluster_scatter(subject_reprs, cluster_assignments, method="tsne")

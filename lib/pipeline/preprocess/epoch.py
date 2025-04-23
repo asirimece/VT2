@@ -4,12 +4,11 @@ from omegaconf import OmegaConf
 
 def create_macro_epochs(raw: mne.io.Raw, dataset_config) -> mne.Epochs:
     """
-    Create macro MNE Epochs from tmin_event to tmax_event around each event.
+    Create macro MNE Epochs from tmin to tmax around each event.
     """
     tmin = dataset_config.epoching.kwargs.tmin
     tmax = dataset_config.epoching.kwargs.tmax
     
-    # Extract events from annotations.
     events, new_event_id = mne.events_from_annotations(raw, verbose=False)
     epochs = mne.Epochs(
         raw, events, event_id=new_event_id,
@@ -19,7 +18,6 @@ def create_macro_epochs(raw: mne.io.Raw, dataset_config) -> mne.Epochs:
     return epochs
 
 def extract_time_locked_epochs(raw, tmin, tmax):
-    # Ensure tmin and tmax are floats (resolve if coming from a config)
     tmin = float(OmegaConf.to_container(tmin, resolve=True)) if hasattr(tmin, "keys") else float(tmin)
     tmax = float(OmegaConf.to_container(tmax, resolve=True)) if hasattr(tmax, "keys") else float(tmax)
     events, event_id = mne.events_from_annotations(raw, verbose=False)
@@ -30,13 +28,11 @@ def extract_time_locked_epochs(raw, tmin, tmax):
 
 def crop_subepochs(epochs, window_length, step_size):
     """
-    Takes an MNE Epochs object (macro epochs) and re-crops each trial into overlapping
-    sub-epochs of length window_length seconds, stepping every step_size seconds.
-    The second column of the event array is set to the original trial index.
+    Create subepochs.
     """
     sfreq = epochs.info['sfreq']
-    original_data = epochs.get_data()    # shape: (n_trials, n_channels, n_times)
-    original_events = epochs.events      # shape: (n_trials, 3)
+    original_data = epochs.get_data()   
+    original_events = epochs.events     
     
     n_trials, n_channels, n_times = original_data.shape
     window_samples = int(round(window_length * sfreq))
@@ -44,13 +40,13 @@ def crop_subepochs(epochs, window_length, step_size):
     
     all_crops = []
     all_events = []
-    sub_epoch_counter = 0  # Initialize the sub-epoch counter
+    sub_epoch_counter = 0  
     
     unique_labels = np.unique(original_events[:, 2])
     subtract_one = (np.min(unique_labels) == 1 and np.max(unique_labels) == 4)
     
     for i in range(n_trials):
-        trial_data = original_data[i]  # shape: (n_channels, n_times)
+        trial_data = original_data[i] 
         raw_label  = original_events[i, 2]
         label_zb = raw_label - 1 if subtract_one else raw_label
         if label_zb < 0:
@@ -62,16 +58,16 @@ def crop_subepochs(epochs, window_length, step_size):
             end   = start + window_samples
             crop_data = trial_data[:, start:end]
             all_crops.append(crop_data)
-            # Use 'i' (the current trial index) as the trial ID
+            
             evt_row = [sub_epoch_counter, i, label_zb]
             all_events.append(evt_row)
             sub_epoch_counter += 1
     
-    all_crops = np.array(all_crops)       # shape: (total_subepochs, n_channels, window_samples)
-    all_events = np.array(all_events, int) # shape: (total_subepochs, 3)
+    all_crops = np.array(all_crops)      
+    all_events = np.array(all_events, int) 
     
     new_info = epochs.info.copy()
-    new_tmin = 0.0  # Each sub-epoch now starts at 0 seconds relative to its crop
+    new_tmin = 0.0  
     new_epochs = mne.EpochsArray(
         data=all_crops,
         info=new_info,
@@ -80,13 +76,7 @@ def crop_subepochs(epochs, window_length, step_size):
         baseline=None,
         verbose=False
     )
-    print("[DEBUG] Unique sub-epoch labels (should match macro labels):", np.unique(all_events[:, 2]))
-    print("[DEBUG] Total number of sub-epochs:", all_crops.shape[0])
-    
-    # New debug lines:
-    print("[DEBUG] First 10 lines of new_epochs.events:")
-    print(new_epochs.events[:10])
-    
+
     return new_epochs
 
 def time_lock_and_slide_epochs(raw, tmin, tmax, window_length, step_size):

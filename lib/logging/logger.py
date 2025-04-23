@@ -5,7 +5,6 @@ def get(name: str = __name__, level: int = logging.INFO) -> logging.Logger:
     logger = logging.getLogger(name)
     logger.setLevel(level)
 
-    # Only add a handler if none exist.
     if not logger.handlers:
         handler = logging.StreamHandler(sys.stdout)
         formatter = logging.Formatter("[%(levelname)s] %(message)s")
