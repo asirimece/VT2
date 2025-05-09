@@ -1,21 +1,16 @@
-
 import torch
 import torch.nn as nn
 from lib.mtl.model import MultiTaskDeep4Net
-from lib.logging import logger
-
-logger = logger.get()
-
 
 class TLModel(nn.Module):
-    def __init__(self, n_chans, n_outputs, n_clusters_pretrained, window_samples):
+    def __init__(self, n_chans, n_outputs, n_clusters_pretrained, window_samples, freeze_layers=None):
         super().__init__()
         self.n_chans = n_chans
         self.n_outputs = n_outputs
         self.n_clusters_pretrained = n_clusters_pretrained
         self.window_samples = window_samples
 
-        # Initialize the pretrained MTL backbone.
+        # Initialize the pretrained MTL backbone
         self.mtl_net = MultiTaskDeep4Net(
             n_chans=self.n_chans,
             n_outputs=self.n_outputs,
@@ -23,7 +18,13 @@ class TLModel(nn.Module):
             backbone_kwargs={"n_times": window_samples},
             head_kwargs=None
         )
-        
+
+        # Freeze specific layers if requested
+        if freeze_layers:
+            for name, param in self.mtl_net.shared_backbone.named_parameters():
+                if any(name.startswith(layer) for layer in freeze_layers):
+                    param.requires_grad = False
+
     def forward(self, x, subject_ids):
         if not torch.is_tensor(subject_ids):
             subject_ids = torch.tensor(subject_ids, dtype=torch.long, device=x.device)
@@ -37,13 +38,13 @@ class TLModel(nn.Module):
             head_key = f"subj_{sid}"
             head = self.mtl_net.heads[head_key]
             return head(features)
+
         outputs = []
         for i, sid in enumerate(subject_ids.tolist()):
             head_key = f"subj_{sid}"
             head = self.mtl_net.heads[head_key]
             outputs.append(head(features[i : i + 1]))
         return torch.cat(outputs, dim=0)
-    
 
     def add_new_head(self, subject_id, feature_dim=None, dummy_input=None):
         if feature_dim is None:
@@ -55,7 +56,6 @@ class TLModel(nn.Module):
             with torch.no_grad():
                 dummy_feat = self.mtl_net.shared_backbone(dummy_input)
                 feature_dim = dummy_feat.shape[1]
-        # Create subject-specific head
         new_head = nn.Linear(feature_dim, self.n_outputs)
         head_key = f"subj_{subject_id}"
         self.mtl_net.heads[head_key] = new_head

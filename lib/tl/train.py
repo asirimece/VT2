@@ -1,4 +1,3 @@
-import hashlib
 import os
 import pickle
 import torch
@@ -6,7 +5,7 @@ import numpy as np
 from tqdm.auto import tqdm
 from torch.utils.data import DataLoader
 from torch import nn
-from omegaconf import DictConfig
+from omegaconf import OmegaConf, DictConfig
 from collections import defaultdict
 from lib.dataset.dataset import TLSubjectDataset
 from lib.tl.model import TLModel
@@ -15,7 +14,6 @@ from lib.utils.utils import _prefix_mtl_keys
 from lib.logging import logger
 
 logger = logger.get()
-
 
 class TLWrapper:
     def __init__(self, ground_truth, predictions):
@@ -33,10 +31,33 @@ class TLWrapper:
 
 
 class TLTrainer:
-    def __init__(self, config: DictConfig):
-        self.config = config.experiment.experiment.transfer
-        self.device = torch.device(self.config.device)
-        self.preprocessed_data_path = config.experiment.experiment.preprocessed_file
+    def __init__(self, config):
+        # Allow both flat config or full Hydra config
+        if isinstance(config, DictConfig) or isinstance(config, dict):
+            if "experiment" in config and "transfer" in config.experiment:
+                # expected case
+                self.full_cfg = config
+                self.config = config.experiment.transfer
+                self.root_cfg = config.experiment
+            elif "transfer" in config:
+                # fallback: config is already the transfer section
+                self.full_cfg = None
+                self.config = config
+                self.root_cfg = None
+            else:
+                raise ValueError("Missing `transfer` block in config")
+        else:
+            raise ValueError("Expected dict or DictConfig")
+
+        assert self.config is not None, "Transfer config could not be extracted"
+        self.device = torch.device(self.config.get("device", "cpu"))
+
+        # Fallback for top-level paths
+        if self.root_cfg:
+            self.preprocessed_data_path = self.root_cfg.get("preprocessed_file")
+        else:
+            self.preprocessed_data_path = self.config.get("preprocessed_file")
+
         self._pretrained_weights = None
         self.model = None
         self.optimizer = None
@@ -69,7 +90,7 @@ class TLTrainer:
             out_dir = os.path.join(self.config.tl_model_output, f"run_{run_idx}")
             os.makedirs(out_dir, exist_ok=True)
 
-            for i, subject_id in enumerate(subject_ids):
+            for subject_id in subject_ids:
                 weights_path = os.path.join(out_dir, f"tl_{subject_id}_model.pth")
                 results_path = os.path.join(out_dir, f"tl_{subject_id}_results.pkl")
 
@@ -83,24 +104,18 @@ class TLTrainer:
 
                 wrapper.save(results_path)
                 torch.save(self.model.state_dict(), weights_path)
-
                 all_results[subject_id].append(wrapper)
 
         return all_results
-    
+
     def _load_subject_data(self, preprocessed_data, subject_id: int):
-        if subject_id not in preprocessed_data:
-            raise ValueError(f"Subject '{subject_id}' not found in preprocessed data.")
-        
         subj_data = preprocessed_data[subject_id]
         train_ep = subj_data["0train"]
         test_ep = subj_data["1test"]
-        
         X_train, y_train = train_ep.get_data(), train_ep.events[:, -1]
         X_test, y_test = test_ep.get_data(), test_ep.events[:, -1]
+        return X_train, y_train, X_test, y_test
 
-        return X_train, y_train, X_test, y_test 
-    
     def _build_model(self, X_train, subject_id: int):
         n_chans = X_train.shape[1]
         window_samples = X_train.shape[2]
@@ -109,51 +124,49 @@ class TLTrainer:
             n_chans=n_chans,
             n_outputs=self.config.model.n_outputs,
             n_clusters_pretrained=self.config.model.n_clusters_pretrained,
-            window_samples=window_samples
+            window_samples=window_samples,
+            freeze_layers=self.config.model.get("freeze_layers", None)
         )
 
-        # Load pretrained MTL weights.
         if self._pretrained_weights is not None:
             model.load_state_dict(self._pretrained_weights)
             logger.info("Loaded pretrained MTL weights into TL model.")
         else:
             logger.info("Training TL model from scratch.")
 
-        # Optionally freeze backbone
         if self.config.freeze_backbone:
             for param in model.shared_backbone.parameters():
                 param.requires_grad = False
             logger.info("Backbone frozen.")
 
-        # Add subject-specific head
-        feature_dim = self.config.get("feature_dim", None)
-        model.add_new_head(subject_id, feature_dim=feature_dim)
-
+        model.add_new_head(subject_id, feature_dim=self.config.get("feature_dim", None))
         return model.to(self.device)
 
     def _build_optimizer(self):
-        decay_params = []
-        no_decay_params = []
+        lr_backbone = self.config.get("lr_backbone", self.config.lr)
+        lr_head = self.config.get("lr_head", self.config.lr)
+
+        decay_params_backbone, no_decay_params_backbone = [], []
+        decay_params_head, no_decay_params_head = [], []
+
         for name, param in self.model.named_parameters():
             if not param.requires_grad:
                 continue
             if "bias" in name or "bn" in name.lower():
-                no_decay_params.append(param)
+                (no_decay_params_backbone if "shared_backbone" in name else no_decay_params_head).append(param)
             else:
-                decay_params.append(param)
+                (decay_params_backbone if "shared_backbone" in name else decay_params_head).append(param)
 
-        return torch.optim.Adam(
-            [
-                {"params": decay_params, "weight_decay": self.config.weight_decay},
-                {"params": no_decay_params, "weight_decay": 0.0},
-            ],
-            lr=self.config.lr
-        )
+        return torch.optim.Adam([
+            {"params": decay_params_backbone,    "lr": lr_backbone, "weight_decay": self.config.weight_decay},
+            {"params": no_decay_params_backbone, "lr": lr_backbone, "weight_decay": 0.0},
+            {"params": decay_params_head,        "lr": lr_head,     "weight_decay": self.config.weight_decay},
+            {"params": no_decay_params_head,     "lr": lr_head,     "weight_decay": 0.0},
+        ])
 
     def _build_dataloaders(self, X_train, y_train, X_test, y_test):
         train_ds = TLSubjectDataset(X_train, y_train)
         test_ds = TLSubjectDataset(X_test, y_test)
-
         train_loader = DataLoader(train_ds, batch_size=self.config.batch_size, shuffle=True)
         test_loader = DataLoader(test_ds, batch_size=self.config.batch_size, shuffle=False)
         return train_loader, test_loader
@@ -176,7 +189,6 @@ class TLTrainer:
                 count += y.size(0)
                 total_loss += loss.item() * y.size(0)
                 pbar.set_postfix(loss=f"{total_loss/count:.4f}", acc=f"{correct/count:.4f}")
-            
             print(f"[TLTrainer] Epoch {epoch}: Loss={total_loss/count:.4f}, Acc={correct/count:.4f}")
 
     def _evaluate(self, test_loader: torch.utils.data.DataLoader, subject_id: int):

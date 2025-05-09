@@ -26,10 +26,10 @@ feature_extraction:
           - [32, 38]
         n_components_per_band: 2   # extract two spatial filters per frequency band.
 
-    - name: riemannian
-      kwargs:
-        estimator: "oas"
-        mapping: "tangent"
+    #- name: riemannian
+     # kwargs:
+      #  estimator: "oas"
+       # mapping: "tangent"
   
   dimensionality_reduction:
     name: pca

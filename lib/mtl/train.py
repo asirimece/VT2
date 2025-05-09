@@ -3,6 +3,7 @@ import random
 import pickle
 import numpy as np
 import torch
+import torch.nn as nn
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from omegaconf import OmegaConf, DictConfig
@@ -16,9 +17,6 @@ logger = logger.get()
 
 
 class MTLWrapper:
-    """
-    Wraps MTL results.
-    """
     def __init__(self, results_by_subject, cluster_assignments, additional_info):
         self.results_by_subject  = results_by_subject
         self.cluster_assignments = cluster_assignments
@@ -30,21 +28,18 @@ class MTLWrapper:
 
 
 class MTLTrainer:
-    def __init__(self,
-                 experiment_cfg: DictConfig | str = "config/experiment/transfer.yaml",
-                 model_cfg:      DictConfig | str = "config/model/deep4net.yaml"):
-        self.experiment_cfg = (OmegaConf.load(experiment_cfg)
-                               if isinstance(experiment_cfg, str)
-                               else experiment_cfg)
-        self.model_cfg      = (OmegaConf.load(model_cfg)
-                               if isinstance(model_cfg, str)
-                               else model_cfg)
+    def __init__(self, experiment_cfg: DictConfig | str = "config/experiment/transfer.yaml",
+                       model_cfg: DictConfig | str = "config/model/deep4net.yaml"):
+
+        self.experiment_cfg = OmegaConf.load(experiment_cfg) if isinstance(experiment_cfg, str) else experiment_cfg
+        self.model_cfg = OmegaConf.load(model_cfg) if isinstance(model_cfg, str) else model_cfg
         exp = self.experiment_cfg.experiment
+
         self.raw_fp       = exp.preprocessed_file
         self.features_fp  = exp.features_file
         self.cluster_cfg  = exp.clustering
-        self.mtl_cfg = exp.mtl
-        self.train_cfg = exp.mtl.training
+        self.mtl_cfg      = exp.mtl
+        self.train_cfg    = exp.mtl.training
 
         os.makedirs(exp.mtl.mtl_model_output, exist_ok=True)
         self.wrapper_path = os.path.join(exp.mtl.mtl_model_output, "mtl_wrapper.pkl")
@@ -61,13 +56,13 @@ class MTLTrainer:
         for subj_id, splits in raw_dict.items():
             ep_tr = splits['0train']
             X_tr.append(ep_tr.get_data())
-            y_tr.append(ep_tr.events[:,2])
-            sid_tr += [subj_id]*len(ep_tr.events)
+            y_tr.append(ep_tr.events[:, 2])
+            sid_tr += [subj_id] * len(ep_tr.events)
 
             ep_te = splits['1test']
             X_te.append(ep_te.get_data())
-            y_te.append(ep_te.events[:,2])
-            sid_te += [subj_id]*len(ep_te.events)
+            y_te.append(ep_te.events[:, 2])
+            sid_te += [subj_id] * len(ep_te.events)
 
         X_tr = np.concatenate(X_tr, axis=0)
         y_tr = np.concatenate(y_tr)
@@ -77,33 +72,24 @@ class MTLTrainer:
         y_te = np.concatenate(y_te)
         sid_te = np.array(sid_te)
 
-        # Cluster
         subject_clusterer = SubjectClusterer(
             self.features_fp,
             OmegaConf.to_container(self.cluster_cfg, resolve=True)
         )
-        cluster_wrapper = subject_clusterer.cluster_subjects(
-            method=self.cluster_cfg.method
-        )
+        cluster_wrapper = subject_clusterer.cluster_subjects(method=self.cluster_cfg.method)
         n_clusters = cluster_wrapper.get_num_clusters()
 
-        # Build a subject-cluster dict
-        assignments = {sid: cluster_wrapper.labels[sid]
-                       for sid in cluster_wrapper.subject_ids}
+        assignments = {sid: cluster_wrapper.labels[sid] for sid in cluster_wrapper.subject_ids}
 
-        # If True, restrict to one cluster
-        exp = self.experiment_cfg.experiment
-        if getattr(exp, "restrict_to_cluster", False):
-            if exp.cluster_id is None:
+        if getattr(self.experiment_cfg.experiment, "restrict_to_cluster", False):
+            cluster_id = self.experiment_cfg.experiment.cluster_id
+            if cluster_id is None:
                 raise ValueError("cluster_id must be set when restrict_to_cluster is True")
-            assignments = {sid: cluster_wrapper.labels[sid]
-                        for sid in cluster_wrapper.subject_ids}
-            
-            mask_tr = np.array([assignments[s] == exp.cluster_id for s in sid_tr])
-            mask_te = np.array([assignments[s] == exp.cluster_id for s in sid_te])
+            mask_tr = np.array([assignments[s] == cluster_id for s in sid_tr])
+            mask_te = np.array([assignments[s] == cluster_id for s in sid_te])
             X_tr, y_tr, sid_tr = X_tr[mask_tr], y_tr[mask_tr], sid_tr[mask_tr]
             X_te, y_te, sid_te = X_te[mask_te], y_te[mask_te], sid_te[mask_te]
-            logger.info(f"Restricted MTL data to cluster {exp.cluster_id}: ")
+            logger.info(f"Restricted MTL data to cluster {cluster_id}: ")
 
         train_ds = EEGMultiTaskDataset(X_tr, y_tr, sid_tr, cluster_wrapper)
         eval_ds  = EEGMultiTaskDataset(X_te, y_te, sid_te, cluster_wrapper)
@@ -112,8 +98,8 @@ class MTLTrainer:
 
         lrs = OmegaConf.to_container(self.train_cfg.learning_rate, resolve=True)
         lbs = OmegaConf.to_container(self.train_cfg.lambda_bias,   resolve=True)
-        if not isinstance(lrs, list): lrs = [lrs]*self.train_cfg.n_runs
-        if not isinstance(lbs, list): lbs = [lbs]*self.train_cfg.n_runs
+        if not isinstance(lrs, list): lrs = [lrs] * self.train_cfg.n_runs
+        if not isinstance(lbs, list): lbs = [lbs] * self.train_cfg.n_runs
 
         results_by_subject = {sid: [] for sid in set(sid_tr) | set(sid_te)}
 
@@ -151,10 +137,9 @@ class MTLTrainer:
         state = convert_state_dict_keys(model.state_dict())
         torch.save(state, self.weights_path)
         logger.debug(f"[DEBUG] MTL weights saved to {self.weights_path}")
-        
+
         self.model = model
         return wrapper
-
 
     def _set_seed(self, seed: int):
         random.seed(seed)
@@ -165,16 +150,17 @@ class MTLTrainer:
 
     def _build_model(self, n_chans: int, n_clusters: int):
         backbone_kwargs = OmegaConf.to_container(self.mtl_cfg.backbone, resolve=True)
+        head_kwargs = OmegaConf.to_container(self.mtl_cfg.model.get("head_kwargs", {}), resolve=True)
         return MultiTaskDeep4Net(
             n_chans         = n_chans,
             n_outputs       = self.mtl_cfg.model.n_outputs,
             n_clusters      = n_clusters,
             backbone_kwargs = backbone_kwargs,
+            head_kwargs     = head_kwargs
         )
 
     def _build_optimizer(self, model, lr: float):
         wd = float(self.train_cfg.optimizer.weight_decay)
-
         decay_params, no_decay_params = [], []
         for name, param in model.named_parameters():
             if not param.requires_grad:
@@ -183,7 +169,6 @@ class MTLTrainer:
                 no_decay_params.append(param)
             else:
                 decay_params.append(param)
-
         return torch.optim.Adam([
             {"params": decay_params,    "weight_decay": wd},
             {"params": no_decay_params, "weight_decay": 0.0},
@@ -199,14 +184,26 @@ class MTLTrainer:
         model.to(self.device)
         for epoch in range(self.train_cfg.epochs):
             model.train()
-            total_loss, correct, count = 0.0, 0, 0
 
-            batch_iter = tqdm(
-                loader,
-                desc=f"Epoch {epoch+1}/{self.train_cfg.epochs}",
-                unit="batch",
-                leave=False,
-            )
+            # Diagnostic Logging (Visual Checkpointing)
+            if epoch % 5 == 0:
+                model.eval()
+                with torch.no_grad():
+                    for X_vis, _, _, cids_vis in loader:
+                        X_vis = X_vis.to(self.device, dtype=torch.float)
+                        cids_vis = cids_vis.clone().detach().long().to(self.device)
+                        probs = model(X_vis, cids_vis).softmax(dim=-1)
+                        for cid in torch.unique(cids_vis):
+                            mask = (cids_vis == cid)
+                            cluster_probs = probs[mask]
+                            avg = cluster_probs.mean(dim=0).cpu().numpy()
+                            print(f"[Diagnostics] Epoch {epoch} | Cluster {cid.item()} Avg probs: {avg}")
+                        break
+                model.train()
+
+            total_loss, correct, count = 0.0, 0, 0
+            batch_iter = tqdm(loader, desc=f"Epoch {epoch+1}/{self.train_cfg.epochs}", unit="batch", leave=False)
+
             for X, y, _, cids in batch_iter:
                 X = X.to(self.device, dtype=torch.float)
                 y = y.to(self.device, dtype=torch.long)
@@ -214,9 +211,10 @@ class MTLTrainer:
 
                 optimizer.zero_grad()
                 outputs = model(X, cids)
-                loss    = criterion(outputs, y)
+                loss = criterion(outputs, y)
 
-                penalty = sum(torch.sum(h.bias**2) for h in model.heads.values())
+                penalty = sum(torch.sum(h[0].bias**2) if isinstance(h, nn.Sequential) else torch.sum(h.bias**2)
+                              for h in model.heads.values())
                 loss = loss + lambda_bias * penalty
 
                 loss.backward()
@@ -224,19 +222,16 @@ class MTLTrainer:
 
                 bs = X.size(0)
                 total_loss += loss.item() * bs
-                preds      = outputs.argmax(dim=1)
-                correct   += (preds == y).sum().item()
-                count     += bs
+                preds = outputs.argmax(dim=1)
+                correct += (preds == y).sum().item()
+                count += bs
 
                 batch_iter.set_postfix({
                     "loss": f"{(total_loss/count):.4f}",
                     "acc":  f"{(correct/count):.4f}"
                 })
 
-            avg_loss = total_loss / count
-            acc      = correct / count
-            print(f"[MTLTrainer] Epoch {epoch+1}/{self.train_cfg.epochs}] "
-                  f"Loss={avg_loss:.4f}, Acc={acc:.4f}")
+            print(f"[MTLTrainer] Epoch {epoch+1}/{self.train_cfg.epochs}] Loss={total_loss/count:.4f}, Acc={correct/count:.4f}")
 
     def _evaluate(self, model, loader):
         model.to(self.device)
@@ -250,12 +245,10 @@ class MTLTrainer:
                 cids = torch.tensor(cids, dtype=torch.long, device=self.device)
 
                 outputs = model(X, cids)
-                preds   = outputs.argmax(dim=1)
+                preds = outputs.argmax(dim=1)
 
                 sids_list.extend(sids.cpu().numpy().tolist())
                 true_list.extend(y.cpu().numpy().tolist())
                 pred_list.extend(preds.cpu().numpy().tolist())
-
-        acc = (np.array(pred_list) == np.array(true_list)).mean()
 
         return sids_list, true_list, pred_list

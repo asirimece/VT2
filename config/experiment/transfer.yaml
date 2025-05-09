@@ -32,14 +32,21 @@ experiment:
 
     model:
       n_outputs: 4
+      n_clusters_pretrained: 4
+      freeze_until_layer: "conv_pool_block_2"
+      head_kwargs:
+        hidden_dim: 128
+        dropout: 0.3
 
     training:
-      n_runs: 3
+      alpha_contrastive: 0.1
+      n_runs: 2
       seed_start: 42
-      epochs: 100
+      epochs: 50
       batch_size: 64
       #learning_rate: [0.001, 0.005, 0.01]   
-      learning_rate: [0.0001, 0.0001, 0.0001]
+      #learning_rate: [0.0001, 0.0001, 0.0001]
+      learning_rate: [0.001, 0.0005, 0.0001]
       lambda_bias: [0.0001, 0.001, 0.01]  
       optimizer:
         name: "Adam"            
@@ -49,26 +56,29 @@ experiment:
     mtl_model_output: "dump/trained_models/mtl"
 
   transfer:
-    #pretrained_mtl_model: null
     pretrained_mtl_model: dump/trained_models/mtl/mtl_weights.pth
-    init_from_scratch: false 
-    freeze_backbone: false
-    n_runs: 3
+    init_from_scratch: false
+    freeze_backbone: false     # Keep false if using partial freezing instead
+    n_runs: 2
     seed_start: 42
-    epochs: 100
-    #lr: 0.001
-    lr: 0.0001
+    epochs: 50
+
+    lr: 0.0001                 # Default (fallback) LR
+    lr_backbone: 0.00005       # Lower LR for frozen or partially frozen backbone
+    lr_head: 0.001             # Higher LR for new subject-specific heads
     weight_decay: 0.001
     batch_size: 64
-
-    device: "cpu"
+    device: "cuda"             # Or "cpu"
 
     tl_model_output: "dump/trained_models/tl"
 
     model:
-      n_outputs: 4             
-      n_clusters_pretrained: 4   # Number of clusters used during MTL pretraining.
-
+      n_outputs: 4
+      n_clusters_pretrained: 4
+      freeze_layers:
+        - "conv_spat"
+        - "conv_2"
+      
   evaluators:
     quantitative:
       metrics:

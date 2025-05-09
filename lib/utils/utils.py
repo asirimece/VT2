@@ -25,3 +25,9 @@ def convert_state_dict_keys(state_dict):
             new_key = key
         new_state_dict[new_key] = value
     return new_state_dict
+
+def remove_prefix(state_dict, prefix="mtl_net."):
+    return {
+        k[len(prefix):] if k.startswith(prefix) else k: v
+        for k, v in state_dict.items()
+    }

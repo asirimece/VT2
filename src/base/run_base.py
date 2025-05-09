@@ -1,3 +1,4 @@
+import pickle
 from lib.base.evaluate import BaselineEvaluator
 from lib.logging import logger
 from omegaconf import DictConfig, OmegaConf
@@ -14,7 +15,7 @@ def run(config: DictConfig) -> None:
    preprocessed_data = preprocessor.run()
    
    save_preprocessed_data(preprocessed_data, config.dataset.preprocessing.output_file)
-   
+
    trainer = BaselineTrainer()  
    training_results = trainer.run()  
 
