@@ -1,7 +1,7 @@
 type: base
 
 data:
-  preprocessed_data: "./dump/preprocessed_data.pkl"
+  preprocessed_data: "./dump/1vs2/preprocessed_data.pkl"
 
 experiment:
   device: "cuda"
@@ -48,5 +48,5 @@ evaluators:
     output_dir: "./evaluation_plots/baseline"
   
 logging:
-  single_results_path: "./dump/trained_models/baseline/single_subject_training.pkl"
-  pooled_results_path: "./dump/trained_models/baseline/pooled_training.pkl"
+  single_results_path: "./dump/1vs2/trained_models/baseline/single_subject_training.pkl"
+  pooled_results_path: "./dump/1vs2/trained_models/baseline/pooled_training.pkl"

@@ -58,4 +58,4 @@ feature_selection:
       #estimator__C: [0.1, 1.0, 10.0] 
     svc_C: 1.0  # for the internal linear SVC.
         
-output_file: "./dump/features.pkl"
+output_file: "./dump/1vs2/features.pkl"

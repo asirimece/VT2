@@ -1,8 +1,8 @@
 type: transfer
 
 experiment:
-  preprocessed_file: "dump/preprocessed_data.pkl"
-  features_file: "dump/features.pkl"
+  preprocessed_file: "dump/1vs2/preprocessed_data.pkl"
+  features_file: "dump/1vs2/features.pkl"
   
   clustering:
     method: "kmeans"
@@ -31,7 +31,8 @@ experiment:
       pool_time_length: 3
 
     model:
-      n_outputs: 4
+      #n_outputs: 4
+      n_outputs: 2
       n_clusters_pretrained: 5
       freeze_until_layer: "conv_pool_block_2"
       head_kwargs:
@@ -52,10 +53,10 @@ experiment:
         weight_decay: 0.001     
       loss: "cross_entropy"
     
-    mtl_model_output: "dump/trained_models/mtl"
+    mtl_model_output: "dump/1vs2/trained_models/mtl"
 
   transfer:
-    pretrained_mtl_model: dump/trained_models/mtl/mtl_weights.pth
+    pretrained_mtl_model: dump/1vs2/trained_models/mtl/mtl_weights.pth
     init_from_scratch: false
     freeze_backbone: false     # Keep false if using partial freezing instead
     n_runs: 2
@@ -69,10 +70,11 @@ experiment:
     batch_size: 64
     device: "cuda"             # Or "cpu"
 
-    tl_model_output: "dump/trained_models/tl"
+    tl_model_output: "dump/1vs2/trained_models/tl"
 
     model:
-      n_outputs: 4
+      #n_outputs: 4
+      n_outputs: 2
       n_clusters_pretrained: 5
       freeze_layers:
         - "conv_spat"
