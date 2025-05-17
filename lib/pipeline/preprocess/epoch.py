@@ -34,6 +34,7 @@ def crop_subepochs(epochs, window_length, step_size):
     original_data = epochs.get_data()   
     original_events = epochs.events     
     
+    n_trials, n_channels, n_times = original_data.shape
     window_samples = int(round(window_length * sfreq))
     step_samples = int(round(step_size * sfreq))
     
@@ -44,26 +45,10 @@ def crop_subepochs(epochs, window_length, step_size):
     unique_labels = np.unique(original_events[:, 2])
     subtract_one = (np.min(unique_labels) == 1 and np.max(unique_labels) == 4)
     
-    ##
-    # Only allow events 1 and 2 (left_hand and right_hand)
-    allowed_labels = [1, 2]
-    mask = np.isin(original_events[:, 2], allowed_labels)
-    original_data = original_data[mask]
-    original_events = original_events[mask]
-    
-    n_trials, n_channels, n_times = original_data.shape
-    ##
-    
     for i in range(n_trials):
         trial_data = original_data[i] 
         raw_label  = original_events[i, 2]
-        #label_zb = raw_label - 1 if subtract_one else raw_label
-        ## 1vs2
-        label_map = {1: 0, 2: 1}
-        if raw_label not in label_map:
-            continue  # Skip unwanted classes
-        label_zb = label_map[raw_label]
-        ##
+        label_zb = raw_label - 1 if subtract_one else raw_label
         if label_zb < 0:
             raise ValueError(f"Invalid label {label_zb} found. Original was {raw_label}.")
         

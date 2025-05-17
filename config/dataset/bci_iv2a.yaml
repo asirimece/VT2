@@ -64,7 +64,7 @@ preprocessing:
       smoothing_factor: 0.1
       eps: 1e-5
 
-  output_file: "./dump/1vs2/complex/preprocessed_data.pkl"
+  output_file: "./dump/preprocessed_data.pkl"
 
 tracker:
   wandb_project: 'bci_iv2a_project'

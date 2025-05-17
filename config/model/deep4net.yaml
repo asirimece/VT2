@@ -1,8 +1,7 @@
 name: "deep4net"
 
 in_chans: 22 # excluding EOG and stim
-#n_classes: 4  
-n_classes: 2
+n_classes: 4  
 n_times: 500  
 final_conv_length: auto 
 

@@ -1,19 +1,19 @@
 type: base
 
 data:
-  preprocessed_data: "./dump/1vs2/complex/preprocessed_data.pkl"
+  preprocessed_data: "./dump/preprocessed_data.pkl"
 
 experiment:
   device: "cuda"
 
   single:
-    n_runs: 3
+    n_runs: 1
     seed_start: 42
-    epochs: 100
+    epochs: 50
     #batch_size: [32, 64, 128]      
-    batch_size: 32
+    batch_size: 64
     #learning_rate: [0.0001, 0.0005, 0.001] 
-    learning_rate: 0.00025
+    learning_rate: 0.0005
     optimizer: "Adam"      
     weight_decay: 0.001     
     loss: "cross_entropy"  
@@ -23,9 +23,9 @@ experiment:
     seed_start: 42
     epochs: 100
     #batch_size: [32, 64, 128]       
-    batch_size: 32
+    batch_size: 64
     #learning_rate: [0.0001, 0.0005, 0.001] 
-    learning_rate: 0.00025
+    learning_rate: 0.0005
     optimizer: "Adam"      
     weight_decay: 0.001     
     loss: "cross_entropy"  
@@ -48,5 +48,5 @@ evaluators:
     output_dir: "./evaluation_plots/baseline"
   
 logging:
-  single_results_path: "./dump/1vs2/complex/trained_models/baseline/single_subject_training.pkl"
-  pooled_results_path: "./dump/1vs2/complex/trained_models/baseline/pooled_training.pkl"
+  single_results_path: "./dump/trained_models/baseline/single_subject_training.pkl"
+  pooled_results_path: "./dump/trained_models/baseline/pooled_training.pkl"
