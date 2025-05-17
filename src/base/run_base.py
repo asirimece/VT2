@@ -16,7 +16,7 @@ def run(config: DictConfig) -> None:
    
    #save_preprocessed_data(preprocessed_data, config.dataset.preprocessing.output_file)
    
-   with open("./dump/1vs2/preprocessed_data.pkl", "rb") as f:
+   with open("./dump/1vs2/complex/preprocessed_data.pkl", "rb") as f:
           preprocessed_data = pickle.load(f)
           
    trainer = BaselineTrainer()  

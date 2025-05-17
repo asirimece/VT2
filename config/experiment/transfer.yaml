@@ -1,8 +1,8 @@
 type: transfer
 
 experiment:
-  preprocessed_file: "dump/1vs2/preprocessed_data.pkl"
-  features_file: "dump/1vs2/features.pkl"
+  preprocessed_file: "dump/preprocessed_data.pkl"
+  features_file: "dump/features.pkl"
   
   clustering:
     method: "kmeans"
@@ -31,8 +31,7 @@ experiment:
       pool_time_length: 3
 
     model:
-      #n_outputs: 4
-      n_outputs: 2
+      n_outputs: 4
       n_clusters_pretrained: 5
       freeze_until_layer: "conv_pool_block_2"
       head_kwargs:
@@ -40,28 +39,39 @@ experiment:
         dropout: 0.3
 
     training:
-      n_runs: 2
+      freeze_schedule:
+        #full: 5         # Freeze entire backbone for first 5 epochs
+        full: 0
+        #partial: 10    
+        partial: 5
+      #1alpha_contrastive: 0.05
+      #2alpha_contrastive: 0.01
+      alpha_contrastive: 0.0
+      #1supcon_warmup: 5
+      #2supcon_warmup: 10
+      supcon_warmup: 0
+      n_runs: 3
       seed_start: 42
-      epochs: 50
+      epochs: 100
       batch_size: 64
-      #learning_rate: [0.001, 0.005, 0.01]   
-      #learning_rate: [0.0001, 0.0001, 0.0001]
-      learning_rate: [0.001, 0.0005, 0.0001]
-      lambda_bias: [0.0001, 0.001, 0.01]  
+      #learning_rate: [0.001, 0.0005, 0.0001]
+      learning_rate: [0.0005, 0.0005, 0.0005]
+      #lambda_bias: [0.0001, 0.001, 0.01]  
       optimizer:
-        name: "Adam"            
+        name: "AdamW"            
         weight_decay: 0.001     
+        #weight_decay: 0.01     
       loss: "cross_entropy"
     
-    mtl_model_output: "dump/1vs2/trained_models/mtl"
+    mtl_model_output: "dump/trained_models/mtl"
 
   transfer:
-    pretrained_mtl_model: dump/1vs2/trained_models/mtl/mtl_weights.pth
+    pretrained_mtl_model: dump/trained_models/mtl/mtl_weights.pth
     init_from_scratch: false
     freeze_backbone: false     # Keep false if using partial freezing instead
-    n_runs: 2
+    n_runs: 3
     seed_start: 42
-    epochs: 50
+    epochs: 100
 
     lr: 0.0001                 # Default (fallback) LR
     lr_backbone: 0.00005       # Lower LR for frozen or partially frozen backbone
@@ -70,11 +80,10 @@ experiment:
     batch_size: 64
     device: "cuda"             # Or "cpu"
 
-    tl_model_output: "dump/1vs2/trained_models/tl"
+    tl_model_output: "dump/trained_models/tl"
 
     model:
-      #n_outputs: 4
-      n_outputs: 2
+      n_outputs: 4
       n_clusters_pretrained: 5
       freeze_layers:
         - "conv_spat"
