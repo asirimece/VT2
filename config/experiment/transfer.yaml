@@ -5,7 +5,7 @@ experiment:
   features_file: "dump/features.pkl"
   
   clustering:
-    method: "kmeans"
+    method: "none"
     kmeans:
       n_clusters: 1
       init: "k-means++"
@@ -67,7 +67,7 @@ experiment:
 
     model:
       n_outputs: 4             
-      n_clusters_pretrained: 1   # Number of clusters used during MTL pretraining.
+      n_clusters_pretrained: 9   # Per-subject heads
 
   evaluators:
     quantitative:

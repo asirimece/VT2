@@ -14,14 +14,14 @@ from lib.logging import logger
 
 logger = logger.get()
 
+"""Runs per subject heads"""
 
 class MTLWrapper:
     """
     Wraps MTL results.
     """
-    def __init__(self, results_by_subject, cluster_assignments, additional_info):
+    def __init__(self, results_by_subject, additional_info):
         self.results_by_subject  = results_by_subject
-        self.cluster_assignments = cluster_assignments
         self.additional_info     = additional_info
 
     def save(self, filename: str):
@@ -77,36 +77,17 @@ class MTLTrainer:
         y_te = np.concatenate(y_te)
         sid_te = np.array(sid_te)
 
-        # Cluster
-        subject_clusterer = SubjectClusterer(
-            self.features_fp,
-            OmegaConf.to_container(self.cluster_cfg, resolve=True)
-        )
-        cluster_wrapper = subject_clusterer.cluster_subjects(
-            method=self.cluster_cfg.method
-        )
-        n_clusters = cluster_wrapper.get_num_clusters()
+        # 1. Build subject-to-head mapping
+        all_subject_ids = sorted(set(sid_tr) | set(sid_te))
+        subject_to_head = {sid: idx for idx, sid in enumerate(all_subject_ids)}
+        n_heads = len(all_subject_ids)
 
-        # Build a subject-cluster dict
-        assignments = {sid: cluster_wrapper.labels[sid]
-                       for sid in cluster_wrapper.subject_ids}
+        # 2. For each trial, assign head id = subject index
+        head_ids_tr = np.array([subject_to_head[sid] for sid in sid_tr])
+        head_ids_te = np.array([subject_to_head[sid] for sid in sid_te])
 
-        # If True, restrict to one cluster
-        exp = self.experiment_cfg.experiment
-        if getattr(exp, "restrict_to_cluster", False):
-            if exp.cluster_id is None:
-                raise ValueError("cluster_id must be set when restrict_to_cluster is True")
-            assignments = {sid: cluster_wrapper.labels[sid]
-                        for sid in cluster_wrapper.subject_ids}
-            
-            mask_tr = np.array([assignments[s] == exp.cluster_id for s in sid_tr])
-            mask_te = np.array([assignments[s] == exp.cluster_id for s in sid_te])
-            X_tr, y_tr, sid_tr = X_tr[mask_tr], y_tr[mask_tr], sid_tr[mask_tr]
-            X_te, y_te, sid_te = X_te[mask_te], y_te[mask_te], sid_te[mask_te]
-            logger.info(f"Restricted MTL data to cluster {exp.cluster_id}: ")
-
-        train_ds = EEGMultiTaskDataset(X_tr, y_tr, sid_tr, cluster_wrapper)
-        eval_ds  = EEGMultiTaskDataset(X_te, y_te, sid_te, cluster_wrapper)
+        train_ds = EEGMultiTaskDataset(X_tr, y_tr, sid_tr, head_ids_tr)
+        eval_ds  = EEGMultiTaskDataset(X_te, y_te, sid_te, head_ids_te)
         train_loader = DataLoader(train_ds, batch_size=self.train_cfg.batch_size, shuffle=True)
         eval_loader  = DataLoader(eval_ds,  batch_size=self.train_cfg.batch_size, shuffle=False)
 
@@ -122,7 +103,7 @@ class MTLTrainer:
             lr, λb = float(lrs[run_idx]), float(lbs[run_idx])
             self._set_seed(seed)
 
-            model     = self._build_model(X_tr.shape[1], n_clusters)
+            model = self._build_model(X_tr.shape[1], n_heads)
             optimizer = self._build_optimizer(model, lr)
             criterion = self._build_criterion()
 
@@ -142,7 +123,6 @@ class MTLTrainer:
 
         wrapper = MTLWrapper(
             results_by_subject  = results_by_subject,
-            cluster_assignments = assignments,
             additional_info     = OmegaConf.to_container(self.train_cfg, resolve=True)
         )
         wrapper.save(self.wrapper_path)
