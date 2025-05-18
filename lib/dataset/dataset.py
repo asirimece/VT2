@@ -33,14 +33,14 @@ class EEGDataset(Dataset):
 
 
 class EEGMultiTaskDataset(Dataset):
-    def __init__(self, data, labels, subject_ids, head_ids):
+    def __init__(self, data, labels, subject_ids, cluster_wrapper):
         """
         MTL Dataset.
         """
         self.data = data
         self.labels = labels
         self.subject_ids = subject_ids
-        self.head_ids = head_ids
+        self.cluster_wrapper = cluster_wrapper
 
     def __len__(self):
         return len(self.data)
@@ -49,8 +49,8 @@ class EEGMultiTaskDataset(Dataset):
         sample = self.data[index]
         label = self.labels[index]
         subject_id = self.subject_ids[index]
-        head_id = self.head_ids[index]  
-        return sample, label, subject_id, head_id
+        cluster_id = self.cluster_wrapper.get_cluster_for_subject(subject_id)
+        return sample, label, subject_id, cluster_id
 
 
 class TLSubjectDataset(Dataset):

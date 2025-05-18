@@ -29,7 +29,6 @@ class MTLEvaluator:
 
         self.experiment_cfg = experiment_cfg
         self.mtl_wrapper = mtl_wrapper
-        self.subject_clusters = {sid: sid for sid in self.mtl_wrapper.results_by_subject.keys()}
 
         # quantitative metrics
         qc = self.experiment_cfg.evaluators.quantitative
@@ -95,7 +94,7 @@ class MTLEvaluator:
         subj_stats = df_subj_run.groupby('subject').agg(['mean','std'])
         subj_stats.columns = [f"{met}_{st}" for met, st in subj_stats.columns]
         subj_stats = subj_stats.reset_index()
-        subj_stats['cluster'] = subj_stats['subject']  # Each subject is its own "cluster" here
+        subj_stats['cluster'] = subj_stats['subject'].map(self.mtl_wrapper.cluster_assignments)
         cols = ['subject','cluster'] + [c for c in subj_stats.columns if c not in ('subject','cluster')]
         subj_stats = subj_stats[cols]
         subj_stats.to_csv(os.path.join(self.out_dir, "mtl_subject_stats_metrics.csv"), index=False)
@@ -108,7 +107,7 @@ class MTLEvaluator:
                 if ridx < len(runs):
                     run = runs[ridx]
                     gt, pr = map(np.array, (run['ground_truth'], run['predictions']))
-                    cl = subj  # cluster==subject for ablation
+                    cl = self.mtl_wrapper.cluster_assignments.get(subj, "None")
                     m  = self.cluster_metrics.evaluate(gt, pr)
                     row = {'run': ridx, 'cluster': cl}
                     row.update(m)
@@ -161,7 +160,7 @@ class MTLEvaluator:
                 if run_idx < len(runs):
                     run = runs[run_idx]
                     gt, pr = map(np.array, (run['ground_truth'], run['predictions']))
-                    cl = subj  # cluster==subject for ablation
+                    cl = self.mtl_wrapper.cluster_assignments.get(subj, 'None')
                     m  = self.cluster_metrics.evaluate(gt, pr)
                     row = {'run': run_idx, 'cluster': cl}
                     row.update(m)
@@ -305,7 +304,7 @@ class MTLEvaluator:
                 # MTL cluster
                 gt_cl, pr_cl = [], []
                 for subj, runs in self.mtl_wrapper.results_by_subject.items():
-                    if subj == cl:  # For ablation: subjects act as their own clusters
+                    if self.mtl_wrapper.cluster_assignments.get(subj) == cl:
                         for run in runs:
                             gt_cl.extend(run['ground_truth'])
                             pr_cl.extend(run['predictions'])
@@ -315,7 +314,7 @@ class MTLEvaluator:
                 )
                 gt_bs_cl, pr_bs_cl = [], []
                 for subj, runs in self.baseline_wrapper.get_experiment_results('single').items():
-                    if subj == cl:  # For ablation: subjects act as their own clusters
+                    if self.mtl_wrapper.cluster_assignments.get(subj) == cl:
                         for run in runs:
                             gt_bs_cl.extend(run['ground_truth'])
                             pr_bs_cl.extend(run['predictions'])
@@ -328,13 +327,13 @@ class MTLEvaluator:
         if 'cluster_scatter' in viz_list:
             self.visuals.plot_cluster_scatter(
                 self.subject_reprs,
-                self.subject_clusters,
+                self.mtl_wrapper.cluster_assignments,
                 method="pca",
                 filename="cluster_scatter_pca.png"
             )
             self.visuals.plot_cluster_scatter(
                 self.subject_reprs,
-                self.subject_clusters,
+                self.mtl_wrapper.cluster_assignments,
                 method="tsne",
                 filename="cluster_scatter_tsne.png"
             )
