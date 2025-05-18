@@ -1,7 +1,7 @@
 defaults:
   - dataset: bci_iv2a
   - transform: transform
-  - experiment: base
+  - experiment: transfer
   - model: deep4net
   - hook: hook
   - tracker: tracker
