@@ -109,7 +109,7 @@ for pipeline in PIPELINE_ROOTS:
 
 # Performance by own cluster
 clus_cfg      = yaml.safe_load(open('config/experiment/transfer.yaml'))['experiment']['clustering']
-cluster_map   = SubjectClusterer('dump/1vs2/complex/features.pkl', clus_cfg).cluster_subjects(method=clus_cfg['method']).labels
+cluster_map   = SubjectClusterer('dump/features.pkl', clus_cfg).cluster_subjects(method=clus_cfg['method']).labels
 df['cluster'] = df['subject'].map(cluster_map)
 
 plt.figure()

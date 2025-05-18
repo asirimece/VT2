@@ -11,13 +11,13 @@ logger = logger.get()
 
 def run(config: DictConfig) -> None: 
    logger.info("==== Starting baseline model training ====")
-   preprocessor = Preprocessor(config)
-   preprocessed_data = preprocessor.run()
+   #preprocessor = Preprocessor(config)
+   #preprocessed_data = preprocessor.run()
    
-   save_preprocessed_data(preprocessed_data, config.dataset.preprocessing.output_file)
+   #save_preprocessed_data(preprocessed_data, config.dataset.preprocessing.output_file)
    
-   #with open("./dump/1vs2/complex/preprocessed_data.pkl", "rb") as f:
-          #preprocessed_data = pickle.load(f)
+   with open("./dump/preprocessed_data.pkl", "rb") as f:
+          preprocessed_data = pickle.load(f)
           
    trainer = BaselineTrainer()  
    training_results = trainer.run()  
