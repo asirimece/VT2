@@ -18,10 +18,9 @@ def create_macro_epochs(raw: mne.io.Raw, dataset_config) -> mne.Epochs:
     )
     return epochs
 
-
-def extract_time_locked_epochs(raw, tmin, tmax, keep_codes=(1,3)):
+def extract_time_locked_epochs(raw, tmin, tmax, keep_codes=(1,2,4)):
     """
-    Extract only epochs for left (1) and right (2) hand events.
+    Extract only epochs for left hand (1), right hand (2), and tongue (4) events.
     """
     tmin = float(OmegaConf.to_container(tmin, resolve=True)) if hasattr(tmin, "keys") else float(tmin)
     tmax = float(OmegaConf.to_container(tmax, resolve=True)) if hasattr(tmax, "keys") else float(tmax)
@@ -35,9 +34,9 @@ def extract_time_locked_epochs(raw, tmin, tmax, keep_codes=(1,3)):
     )
     return epochs
 
-def crop_subepochs(epochs, window_length, step_size, keep_codes=(1,3)):
+def crop_subepochs(epochs, window_length, step_size, keep_codes=(1,2,4)):
     """
-    Crops epochs to subepochs and remaps event codes 1/2 → 0/1
+    Crops epochs to subepochs and remaps event codes 1/2/4 → 0/1/2.
     """
     sfreq = epochs.info['sfreq']
     data = epochs.get_data()
@@ -54,7 +53,7 @@ def crop_subepochs(epochs, window_length, step_size, keep_codes=(1,3)):
     all_events = []
     counter   = 0
 
-    # Map 1→0, 2→1
+    # Map 1→0, 2→1, 4→2
     label_map = {code: idx for idx, code in enumerate(keep_codes)}
 
     for trial_idx, raw_label in enumerate(events[:, 2]):
@@ -87,9 +86,9 @@ def crop_subepochs(epochs, window_length, step_size, keep_codes=(1,3)):
     )
     return new_epochs
 
-def time_lock_and_slide_epochs(raw, tmin, tmax, window_length, step_size, keep_codes=(1,3)):
+def time_lock_and_slide_epochs(raw, tmin, tmax, window_length, step_size, keep_codes=(1,2,4)):
     """
-    Combines steps for left vs. right (event codes 1,3)
+    Combines steps for 3-class MI (left hand, right hand, tongue)
     """
     epochs = extract_time_locked_epochs(raw, tmin, tmax, keep_codes=keep_codes)
     new_epochs = crop_subepochs(epochs, window_length, step_size, keep_codes=keep_codes)
