@@ -18,13 +18,20 @@ logger = logger.get()
 
 
 # Helper to freeze backbone up to given conv block index
-def freeze_backbone_layers(backbone, layers_to_freeze):
-    if hasattr(backbone, 'conv_blocks'):
-        for i, block in enumerate(backbone.conv_blocks[:layers_to_freeze]):
-            for param in block.parameters():
-                param.requires_grad = False
-    else:
-        raise AttributeError("Backbone model does not have `conv_blocks`.")
+def freeze_backbone_layers(backbone, freeze_until_layer=None):
+    """
+    Freezes all backbone layers up to (and including) freeze_until_layer.
+    If freeze_until_layer is None, freezes the entire backbone.
+    """
+    found = False
+    for name, module in backbone.named_children():
+        for param in module.parameters():
+            param.requires_grad = False
+        if freeze_until_layer is not None and name == freeze_until_layer:
+            found = True
+            break
+    if freeze_until_layer and not found:
+        raise ValueError(f"Layer {freeze_until_layer} not found in backbone (got: {[n for n, _ in backbone.named_children()]})")
     
 class TLWrapper:
     def __init__(self, ground_truth, predictions):
@@ -127,14 +134,15 @@ class TLTrainer:
             logger.info("Training TL model from scratch.")
 
         # Partial backbone freeze (up to freeze_until_block, inclusive)
-        freeze_until = getattr(self.config, "freeze_until_block", None)
+        freeze_until = getattr(self.config, "freeze_until_layer", None)
         if freeze_until is not None:
-            freeze_backbone_layers(model.shared_backbone, freeze_until)
-            logger.info(f"Froze backbone up to conv_block_{freeze_until}")
+            freeze_backbone_layers(model.shared_backbone, freeze_until_layer=freeze_until)
+            logger.info(f"Froze backbone up to {freeze_until}")
         elif getattr(self.config, "freeze_backbone", False):
             for param in model.shared_backbone.parameters():
                 param.requires_grad = False
             logger.info("Backbone frozen.")
+
 
         # Add subject-specific head if needed
         feature_dim = self.config.get("feature_dim", None)
