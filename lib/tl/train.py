@@ -1,28 +1,19 @@
-import hashlib
 import os
 import pickle
 import torch
 import numpy as np
 from tqdm.auto import tqdm
 from torch.utils.data import DataLoader
-from torch import nn
 from omegaconf import DictConfig
 from collections import defaultdict
 from lib.dataset.dataset import TLSubjectDataset
 from lib.tl.model import TLModel
-from lib.tl.evaluate import TLEvaluator
-from lib.utils.utils import _prefix_mtl_keys
 from lib.logging import logger
+from lib.utils.utils import _prefix_mtl_keys
 
 logger = logger.get()
 
-
-# Helper to freeze backbone up to given conv block index
 def freeze_backbone_layers(backbone, freeze_until_layer=None):
-    """
-    Freezes all backbone layers up to (and including) freeze_until_layer.
-    If freeze_until_layer is None, freezes the entire backbone.
-    """
     found = False
     for name, module in backbone.named_children():
         for param in module.parameters():
@@ -32,7 +23,7 @@ def freeze_backbone_layers(backbone, freeze_until_layer=None):
             break
     if freeze_until_layer and not found:
         raise ValueError(f"Layer {freeze_until_layer} not found in backbone (got: {[n for n, _ in backbone.named_children()]})")
-    
+
 class TLWrapper:
     def __init__(self, ground_truth, predictions):
         self.ground_truth = ground_truth
@@ -47,7 +38,6 @@ class TLWrapper:
         with open(path, "rb") as f:
             return pickle.load(f)
 
-
 class TLTrainer:
     def __init__(self, config: DictConfig):
         self.config = config.experiment.experiment.transfer
@@ -56,7 +46,7 @@ class TLTrainer:
         self._pretrained_weights = None
         self.model = None
         self.optimizer = None
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = torch.nn.CrossEntropyLoss()
 
     def _set_seed(self, seed: int):
         import random
@@ -69,14 +59,12 @@ class TLTrainer:
     def run(self):
         with open(self.preprocessed_data_path, "rb") as f:
             preprocessed_data = pickle.load(f)
-
         subject_ids = sorted(preprocessed_data.keys())
         all_results = defaultdict(list)
 
+        # Load only the shared backbone weights from MTL
         if not self.config.init_from_scratch:
-            self._pretrained_weights = _prefix_mtl_keys(
-                torch.load(self.config.pretrained_mtl_model, map_location=self.device)
-            )
+            self._pretrained_weights = torch.load(self.config.pretrained_mtl_backbone, map_location=self.device)
 
         for run_idx in range(self.config.n_runs):
             seed = self.config.seed_start + run_idx
@@ -85,7 +73,7 @@ class TLTrainer:
             out_dir = os.path.join(self.config.tl_model_output, f"run_{run_idx}")
             os.makedirs(out_dir, exist_ok=True)
 
-            for i, subject_id in enumerate(subject_ids):
+            for subject_id in subject_ids:
                 weights_path = os.path.join(out_dir, f"tl_{subject_id}_model.pth")
                 results_path = os.path.join(out_dir, f"tl_{subject_id}_results.pkl")
 
@@ -101,22 +89,18 @@ class TLTrainer:
                 torch.save(self.model.state_dict(), weights_path)
 
                 all_results[subject_id].append(wrapper)
-
         return all_results
-    
+
     def _load_subject_data(self, preprocessed_data, subject_id: int):
         if subject_id not in preprocessed_data:
             raise ValueError(f"Subject '{subject_id}' not found in preprocessed data.")
-        
         subj_data = preprocessed_data[subject_id]
         train_ep = subj_data["0train"]
         test_ep = subj_data["1test"]
-        
         X_train, y_train = train_ep.get_data(), train_ep.events[:, -1]
         X_test, y_test = test_ep.get_data(), test_ep.events[:, -1]
-
         return X_train, y_train, X_test, y_test 
-    
+
     def _build_model(self, X_train, subject_id: int):
         n_chans = X_train.shape[1]
         window_samples = X_train.shape[2]
@@ -125,11 +109,12 @@ class TLTrainer:
             n_outputs=self.config.model.n_outputs,
             n_clusters_pretrained=self.config.model.n_clusters_pretrained,
             window_samples=window_samples
+            # Optionally: head_type, head_kwargs
         )
-        # Load pretrained weights if available
+        # Load only backbone weights if available
         if self._pretrained_weights is not None:
-            model.load_state_dict(self._pretrained_weights)
-            logger.info("Loaded pretrained MTL weights into TL model.")
+            model.shared_backbone.load_state_dict(self._pretrained_weights, strict=True)
+            logger.info("Loaded MTL backbone weights into TL model.")
         else:
             logger.info("Training TL model from scratch.")
 
@@ -143,14 +128,12 @@ class TLTrainer:
                 param.requires_grad = False
             logger.info("Backbone frozen.")
 
-
-        # Add subject-specific head if needed
-        feature_dim = self.config.get("feature_dim", None)
-        model.add_new_head(subject_id, feature_dim=feature_dim)
+        # Always add a new (random) head for this subject
+        model.add_new_head(subject_id)
         return model.to(self.device)
 
     def _build_optimizer(self):
-        # Collect backbone and head params for differential LR
+        # Differential learning rates for backbone and head(s)
         backbone_params = []
         head_params = []
         for name, param in self.model.named_parameters():
@@ -170,7 +153,6 @@ class TLTrainer:
     def _build_dataloaders(self, X_train, y_train, X_test, y_test):
         train_ds = TLSubjectDataset(X_train, y_train)
         test_ds = TLSubjectDataset(X_test, y_test)
-
         train_loader = DataLoader(train_ds, batch_size=self.config.batch_size, shuffle=True)
         test_loader = DataLoader(test_ds, batch_size=self.config.batch_size, shuffle=False)
         return train_loader, test_loader
@@ -183,7 +165,7 @@ class TLTrainer:
             for X, y in pbar:
                 X, y = X.to(self.device), y.to(self.device)
                 self.optimizer.zero_grad()
-                outputs = self.model(X, [subject_id] * X.size(0))
+                outputs = self.model(X, torch.full((X.size(0),), subject_id, dtype=torch.long, device=self.device))
                 loss = self.criterion(outputs, y)
                 loss.backward()
                 self.optimizer.step()
@@ -193,16 +175,15 @@ class TLTrainer:
                 count += y.size(0)
                 total_loss += loss.item() * y.size(0)
                 pbar.set_postfix(loss=f"{total_loss/count:.4f}", acc=f"{correct/count:.4f}")
-            
             print(f"[TLTrainer] Epoch {epoch}: Loss={total_loss/count:.4f}, Acc={correct/count:.4f}")
 
-    def _evaluate(self, test_loader: torch.utils.data.DataLoader, subject_id: int):
+    def _evaluate(self, test_loader, subject_id: int):
         self.model.eval()
         all_preds, all_labels = [], []
         with torch.no_grad():
             for X, y in test_loader:
                 X = X.to(self.device)
-                outputs = self.model(X, [subject_id] * X.size(0))
+                outputs = self.model(X, torch.full((X.size(0),), subject_id, dtype=torch.long, device=self.device))
                 preds = outputs.argmax(dim=1).cpu().numpy()
                 all_preds.extend(preds)
                 all_labels.extend(y.numpy())

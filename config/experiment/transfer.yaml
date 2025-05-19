@@ -40,7 +40,7 @@ experiment:
     training:
       n_runs: 1
       seed_start: 42
-      epochs: 50
+      epochs: 1
       batch_size: 64
       #learning_rate: [0.001, 0.005, 0.01]   
       learning_rate: [0.0001, 0.0001, 0.0001]
@@ -55,6 +55,7 @@ experiment:
   transfer:
     #pretrained_mtl_model: null
     pretrained_mtl_model: dump/trained_models/mtl/mtl_weights.pth
+    pretrained_mtl_backbone: dump/trained_models/mtl/mtl_backbone_weights.pth
     init_from_scratch: false 
     freeze_backbone: false
     freeze_until_block: "conv_2"  # freeze up to this layer, or null/None for none
@@ -62,7 +63,7 @@ experiment:
     head_lr: 0.001                # Higher LR for head(s)
     n_runs: 1
     seed_start: 42
-    epochs: 50
+    epochs: 1
     #lr: 0.001
     lr: 0.0001
     weight_decay: 0.001

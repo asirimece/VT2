@@ -153,6 +153,10 @@ class MTLTrainer:
         logger.debug(f"[DEBUG] MTL weights saved to {self.weights_path}")
         
         self.model = model
+        
+        backbone_weights_path = os.path.join(exp.mtl.mtl_model_output, "mtl_backbone_weights.pth")
+        torch.save(model.shared_backbone.state_dict(), backbone_weights_path)
+
         return wrapper
 
 
