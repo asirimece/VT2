@@ -17,6 +17,15 @@ from lib.logging import logger
 logger = logger.get()
 
 
+# Helper to freeze backbone up to given conv block index
+def freeze_backbone_layers(backbone, layers_to_freeze):
+    if hasattr(backbone, 'conv_blocks'):
+        for i, block in enumerate(backbone.conv_blocks[:layers_to_freeze]):
+            for param in block.parameters():
+                param.requires_grad = False
+    else:
+        raise AttributeError("Backbone model does not have `conv_blocks`.")
+    
 class TLWrapper:
     def __init__(self, ground_truth, predictions):
         self.ground_truth = ground_truth
@@ -104,51 +113,51 @@ class TLTrainer:
     def _build_model(self, X_train, subject_id: int):
         n_chans = X_train.shape[1]
         window_samples = X_train.shape[2]
-
         model = TLModel(
             n_chans=n_chans,
             n_outputs=self.config.model.n_outputs,
             n_clusters_pretrained=self.config.model.n_clusters_pretrained,
             window_samples=window_samples
         )
-
-        # Load pretrained MTL weights.
+        # Load pretrained weights if available
         if self._pretrained_weights is not None:
             model.load_state_dict(self._pretrained_weights)
             logger.info("Loaded pretrained MTL weights into TL model.")
         else:
             logger.info("Training TL model from scratch.")
 
-        # Optionally freeze backbone
-        if self.config.freeze_backbone:
+        # Partial backbone freeze (up to freeze_until_block, inclusive)
+        freeze_until = getattr(self.config, "freeze_until_block", None)
+        if freeze_until is not None:
+            freeze_backbone_layers(model.shared_backbone, freeze_until)
+            logger.info(f"Froze backbone up to conv_block_{freeze_until}")
+        elif getattr(self.config, "freeze_backbone", False):
             for param in model.shared_backbone.parameters():
                 param.requires_grad = False
             logger.info("Backbone frozen.")
 
-        # Add subject-specific head
+        # Add subject-specific head if needed
         feature_dim = self.config.get("feature_dim", None)
         model.add_new_head(subject_id, feature_dim=feature_dim)
-
         return model.to(self.device)
 
     def _build_optimizer(self):
-        decay_params = []
-        no_decay_params = []
+        # Collect backbone and head params for differential LR
+        backbone_params = []
+        head_params = []
         for name, param in self.model.named_parameters():
             if not param.requires_grad:
                 continue
-            if "bias" in name or "bn" in name.lower():
-                no_decay_params.append(param)
+            if 'shared_backbone' in name:
+                backbone_params.append(param)
             else:
-                decay_params.append(param)
-
-        return torch.optim.Adam(
-            [
-                {"params": decay_params, "weight_decay": self.config.weight_decay},
-                {"params": no_decay_params, "weight_decay": 0.0},
-            ],
-            lr=self.config.lr
-        )
+                head_params.append(param)
+        backbone_lr = getattr(self.config, "backbone_lr", self.config.lr)
+        head_lr = getattr(self.config, "head_lr", self.config.lr)
+        return torch.optim.Adam([
+            {"params": backbone_params, "lr": backbone_lr, "weight_decay": self.config.weight_decay},
+            {"params": head_params,     "lr": head_lr,     "weight_decay": 0.0}
+        ])
 
     def _build_dataloaders(self, X_train, y_train, X_test, y_test):
         train_ds = TLSubjectDataset(X_train, y_train)
