@@ -35,6 +35,7 @@ experiment:
       head_kwargs:
         hidden_dim: 128   # or "auto" for feature_dim, or 2*feature_dim
         drop_prob: 0.2
+        norm_type: "layer"
 
     training:
       n_runs: 1

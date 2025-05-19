@@ -2,27 +2,20 @@ import torch
 import torch.nn as nn
 from braindecode.models import Deep4Net
 
-
-
 class DeepMTLHead(nn.Module):
-    def __init__(self, feature_dim, n_outputs, hidden_dim=None, drop_prob=0.2):
+    def __init__(self, feature_dim, n_outputs, hidden_dim=None, drop_prob=0.2, norm_type="layer"):
         super().__init__()
-        hidden_dim = hidden_dim or feature_dim  # or 2*feature_dim for more capacity
+        hidden_dim = hidden_dim or feature_dim
+        norm_layer = nn.BatchNorm1d if norm_type == "batch" else nn.LayerNorm
         self.net = nn.Sequential(
             nn.Linear(feature_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
+            norm_layer(hidden_dim),
             nn.ReLU(inplace=True),
             nn.Dropout(drop_prob),
             nn.Linear(hidden_dim, n_outputs)
         )
     def forward(self, x):
         return self.net(x)
-
-
-import torch
-import torch.nn as nn
-from braindecode.models import Deep4Net
-from lib.mtl.deep_head import DeepMTLHead  # Path to the head you just added
 
 class MultiTaskDeep4Net(nn.Module):
     def __init__(self, n_chans, n_outputs, n_clusters, backbone_kwargs=None, head_kwargs=None):
@@ -31,41 +24,49 @@ class MultiTaskDeep4Net(nn.Module):
         window_samples = backbone_kwargs.pop("n_times", 500)
         self.shared_backbone = Deep4Net(
             n_chans=n_chans,
-            n_outputs=n_outputs,  # Still needed by Deep4Net, but ignored for custom heads
+            n_outputs=n_outputs,  # needed for Deep4Net
             n_times=window_samples,
             final_conv_length="auto",
             **backbone_kwargs
         )
-        # Infer feature dimension for head input
-        dummy_input = torch.zeros(1, n_chans, window_samples)
+        # Get feature dim
+        dummy_input = torch.zeros(2, n_chans, window_samples)  # must be at least 2 for BN
         with torch.no_grad():
             dummy_features = self.shared_backbone(dummy_input)
         feature_dim = dummy_features.shape[1]
 
         head_kwargs = head_kwargs or {}
         hidden_dim = head_kwargs.get("hidden_dim", feature_dim)
-        drop_prob  = head_kwargs.get("drop_prob", 0.2)
+        drop_prob = head_kwargs.get("drop_prob", 0.2)
+        norm_type = head_kwargs.get("norm_type", "batch")
 
-        # Use nonlinear head for each cluster
+        # Make heads per cluster
         self.heads = nn.ModuleDict({
             str(cluster): DeepMTLHead(
                 feature_dim=feature_dim,
                 n_outputs=n_outputs,
                 hidden_dim=hidden_dim,
-                drop_prob=drop_prob
+                drop_prob=drop_prob,
+                norm_type=norm_type
             )
             for cluster in range(n_clusters)
         })
 
     def forward(self, x, cluster_ids):
-        features = self.shared_backbone(x)
-        if isinstance(cluster_ids, int) or (torch.is_tensor(cluster_ids) and cluster_ids.unique().numel() == 1):
-            head = self.heads[str(int(cluster_ids if isinstance(cluster_ids, int) else cluster_ids[0]))]
-            output = head(features)
+        features = self.shared_backbone(x)  # [batch, feat_dim]
+        # Convert cluster_ids to tensor if not already
+        if not torch.is_tensor(cluster_ids):
+            cluster_ids = torch.tensor(cluster_ids, dtype=torch.long, device=x.device)
         else:
-            outputs = []
-            for i, cid in enumerate(cluster_ids):
-                head = self.heads[str(int(cid))]
-                outputs.append(head(features[i].unsqueeze(0)))
-            output = torch.cat(outputs, dim=0)
-        return output
+            cluster_ids = cluster_ids.to(x.device)
+        # Batch mode: forward samples grouped by cluster
+        outputs = torch.zeros(features.shape[0], self.heads["0"].net[-1].out_features, device=x.device)
+        for cluster in torch.unique(cluster_ids):
+            idxs = (cluster_ids == cluster).nonzero(as_tuple=False).flatten()
+            if len(idxs) == 0:
+                continue
+            feats = features[idxs]
+            head = self.heads[str(int(cluster))]
+            outputs[idxs] = head(feats)
+        return outputs
+

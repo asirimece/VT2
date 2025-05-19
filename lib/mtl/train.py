@@ -218,7 +218,7 @@ class MTLTrainer:
                 outputs = model(X, cids)
                 loss    = criterion(outputs, y)
 
-                penalty = sum(torch.sum(h.bias**2) for h in model.heads.values())
+                penalty = sum(torch.sum(h.net[-1].bias**2) for h in model.heads.values())
                 loss = loss + lambda_bias * penalty
 
                 loss.backward()
