@@ -32,6 +32,9 @@ experiment:
 
     model:
       n_outputs: 4
+      head_kwargs:
+        hidden_dim: 128   # or "auto" for feature_dim, or 2*feature_dim
+        drop_prob: 0.2
 
     training:
       n_runs: 1
