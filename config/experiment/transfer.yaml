@@ -31,7 +31,7 @@ experiment:
       pool_time_length: 3
 
     model:
-      n_outputs: 4
+      n_outputs: 2
 
     training:
       n_runs: 1
@@ -69,7 +69,7 @@ experiment:
     tl_model_output: "dump/trained_models/tl"
 
     model:
-      n_outputs: 4        
+      n_outputs: 2        
       n_clusters_pretrained: 4   # Number of clusters used during MTL pretraining.
 
   evaluators:
