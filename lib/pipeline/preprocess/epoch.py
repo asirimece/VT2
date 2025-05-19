@@ -18,11 +18,8 @@ def create_macro_epochs(raw: mne.io.Raw, dataset_config) -> mne.Epochs:
     )
     return epochs
 
-import numpy as np
-import mne
-from omegaconf import OmegaConf
 
-def extract_time_locked_epochs(raw, tmin, tmax, keep_codes=(1,2)):
+def extract_time_locked_epochs(raw, tmin, tmax, keep_codes=(1,3)):
     """
     Extract only epochs for left (1) and right (2) hand events.
     """
@@ -38,7 +35,7 @@ def extract_time_locked_epochs(raw, tmin, tmax, keep_codes=(1,2)):
     )
     return epochs
 
-def crop_subepochs(epochs, window_length, step_size, keep_codes=(1,2)):
+def crop_subepochs(epochs, window_length, step_size, keep_codes=(1,3)):
     """
     Crops epochs to subepochs and remaps event codes 1/2 → 0/1
     """
@@ -90,9 +87,9 @@ def crop_subepochs(epochs, window_length, step_size, keep_codes=(1,2)):
     )
     return new_epochs
 
-def time_lock_and_slide_epochs(raw, tmin, tmax, window_length, step_size, keep_codes=(1,2)):
+def time_lock_and_slide_epochs(raw, tmin, tmax, window_length, step_size, keep_codes=(1,3)):
     """
-    Combines steps for left vs. right (event codes 1,2)
+    Combines steps for left vs. right (event codes 1,3)
     """
     epochs = extract_time_locked_epochs(raw, tmin, tmax, keep_codes=keep_codes)
     new_epochs = crop_subepochs(epochs, window_length, step_size, keep_codes=keep_codes)
