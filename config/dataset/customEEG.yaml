@@ -42,7 +42,7 @@ preprocessing:
     kwargs:
       tmin: -1.0                     # Start 1s before event marker (per instructions)
       tmax: 2.0                      # End 2s after marker (for 3s window)
-      crop_window_length: 2.0        # Or as required by your pipeline
+      crop_window_length: 3.0        
       crop_step_size: 0.5
       baseline: null                 # No baseline correction
 

@@ -59,12 +59,14 @@ class MTLTrainer:
         X_tr, y_tr, sid_tr = [], [], []
         X_te, y_te, sid_te = [], [], []
         for subj_id, splits in raw_dict.items():
-            ep_tr = splits['0train']
+            #ep_tr = splits['0train']
+            ep_tr = splits['train']
             X_tr.append(ep_tr.get_data())
             y_tr.append(ep_tr.events[:,2])
             sid_tr += [subj_id]*len(ep_tr.events)
 
-            ep_te = splits['1test']
+            #ep_te = splits['1test']
+            ep_te = splits['test']
             X_te.append(ep_te.get_data())
             y_te.append(ep_te.events[:,2])
             sid_te += [subj_id]*len(ep_te.events)

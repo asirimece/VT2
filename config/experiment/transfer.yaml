@@ -1,7 +1,7 @@
 type: transfer
 
 experiment:
-  preprocessed_file: "dump/preprocessed_data.pkl"
+  preprocessed_file: "dump/preprocessed_data_custom.pkl"
   features_file: "dump/features.pkl"
   
   clustering:
@@ -23,7 +23,8 @@ experiment:
 
   mtl:
     backbone:
-      n_times: 500
+      #n_times: 500  
+      n_times: 600  # new dataset
       drop_prob: 0.15
       n_filters_time: 25
       n_filters_spat: 25

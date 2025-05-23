@@ -109,8 +109,10 @@ class TLTrainer:
             raise ValueError(f"Subject '{subject_id}' not found in preprocessed data.")
         
         subj_data = preprocessed_data[subject_id]
-        train_ep = subj_data["0train"]
-        test_ep = subj_data["1test"]
+        #train_ep = subj_data["0train"]
+        train_ep = subj_data["train"]
+        #test_ep = subj_data["1test"]
+        test_ep = subj_data["test"]
         
         X_train, y_train = train_ep.get_data(), train_ep.events[:, -1]
         X_test, y_test = test_ep.get_data(), test_ep.events[:, -1]

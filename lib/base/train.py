@@ -139,8 +139,10 @@ class BaselineTrainer:
 
 
     def _train_subject(self, subj, subject_data):
-        tr = subject_data["0train"]
-        te = subject_data["1test"]
+        #tr = subject_data["0train"]
+        tr = subject_data["train"]
+        #te = subject_data["1test"]
+        te = subject_data["test"]
         Xtr, ytr = tr.get_data(), tr.events[:, -1]
         Xte, yte = te.get_data(),  te.events[:, -1]
         tid_tr   = tr.events[:, 1]
@@ -176,7 +178,8 @@ class BaselineTrainer:
         Xte_list, yte_list, tid_te_list = [], [], []
 
         for idx, (_, data) in enumerate(self.preprocessed_data.items()):
-            tr = data["0train"]; te = data["1test"]
+            #tr = data["0train"]; te = data["1test"]
+            tr = data["train"]; te = data["test"]
             offset = idx * 1_000_000
             Xtr_list.append(tr.get_data());     
             ytr_list.append(tr.events[:,-1])

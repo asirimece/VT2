@@ -1,7 +1,7 @@
 type: base
 
 data:
-  preprocessed_data: "./dump/preprocessed_data.pkl"
+  preprocessed_data: "./dump/preprocessed_data_custom.pkl"
 
 experiment:
   device: "cuda"
@@ -9,7 +9,7 @@ experiment:
   single:
     n_runs: 1
     seed_start: 42
-    epochs: 1
+    epochs: 50
     #batch_size: [32, 64, 128]      
     batch_size: 64
     #learning_rate: [0.0001, 0.0005, 0.001] 
@@ -21,7 +21,7 @@ experiment:
   pooled:
     n_runs: 1
     seed_start: 42
-    epochs: 1
+    epochs: 50
     #batch_size: [32, 64, 128]       
     batch_size: 64
     #learning_rate: [0.0001, 0.0005, 0.001] 
