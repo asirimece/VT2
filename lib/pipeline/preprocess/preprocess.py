@@ -63,7 +63,7 @@ class Preprocessor:
                 )
 
             # Pick EEG channels (should be only 8, but keep for robustness)
-            raw.pick_types(eeg=True, stim=False, exclude=[])
+            raw.pick("eeg")
 
             # Epoching
             macro_epochs = create_macro_epochs(raw, self.preproc_config)

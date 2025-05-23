@@ -53,15 +53,15 @@ preprocessing:
 
   output_file: "./dump/preprocessed_data_custom.pkl"
 
-# =======================
-# Data Splitting
-# =======================
-data_split:
-  kwargs:
-    # If you want to use the same split as before, set up accordingly
-    # Since you have one session per subject, you may need random or event-level splits.
-    train_fraction: 0.7   # Example: 70% of events for training
-    random_seed: 42
+  # =======================
+  # Data Splitting
+  # =======================
+  data_split:
+    kwargs:
+      # If you want to use the same split as before, set up accordingly
+      # Since you have one session per subject, you may need random or event-level splits.
+      train_fraction: 0.7   # Example: 70% of events for training
+      random_seed: 42
 
 # =======================
 # Tracking (optional)
