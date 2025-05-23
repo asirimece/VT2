@@ -1,0 +1,71 @@
+# =======================
+# Dataset Configuration
+# =======================
+
+name: 'EEG_85Subjects'
+home: './data/04_sampleFreq200_80_events'
+dataset: 'CustomEEG'
+
+n_subjects: 85
+subjects: []  # Will be inferred from filenames
+sfreq: 200
+n_channels: 8
+eeg_channels: ['Fz', 'C3', 'Cz', 'C4', 'PO7', 'Oz', 'PO8', 'Pz']
+eog_channels: []
+
+# =======================
+# Event Label Mapping
+# =======================
+# Map annotation codes and names to class numbers and vice versa
+event_markers:
+  left_hand: 0
+  right_hand: 1
+  rest: 2
+  "0": "left_hand"
+  "1": "right_hand"
+  "2": "rest"
+
+unify_annotations: true
+
+# =======================
+# Preprocessing
+# =======================
+preprocessing:
+  remove_eog_artifacts: false        # Already dropped
+  show_ica_plots: false              # Not needed
+  save_ica_plots: false
+  ica_plots_dir: null
+
+  raw_preprocessors: {}              # Already filtered, resampled, and notch filtered
+
+  epoching:
+    kwargs:
+      tmin: -1.0                     # Start 1s before event marker (per instructions)
+      tmax: 2.0                      # End 2s after marker (for 3s window)
+      crop_window_length: 2.0        # Or as required by your pipeline
+      crop_step_size: 0.5
+      baseline: null                 # No baseline correction
+
+  exponential_moving_standardization:
+    kwargs:
+      smoothing_factor: 0.1
+      eps: 1e-5
+
+  output_file: "./dump/preprocessed_data_custom.pkl"
+
+# =======================
+# Data Splitting
+# =======================
+data_split:
+  kwargs:
+    # If you want to use the same split as before, set up accordingly
+    # Since you have one session per subject, you may need random or event-level splits.
+    train_fraction: 0.7   # Example: 70% of events for training
+    random_seed: 42
+
+# =======================
+# Tracking (optional)
+# =======================
+tracker:
+  wandb_project: 'eeg_custom'
+  wandb_mode: 'online'

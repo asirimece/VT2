@@ -1,0 +1,19 @@
+File: recording_subject_300_session_1_raw.fif
+  Mean per channel: [8.0e-06 2.0e-05 1.0e-06 1.9e-05 6.0e-06 6.0e-06 1.2e-05 3.0e-05]
+  Std per channel:  [2.20e-05 3.90e-05 1.40e-05 5.30e-05 1.75e-04 5.40e-05 7.00e-05 7.50e-05]
+  Overall mean:     0.000
+  Overall std:      0.000
+
+File: recording_subject_400_session_1_raw.fif
+  Mean per channel: [ 1.e-06 -1.e-06 -0.e+00  0.e+00 -0.e+00 -1.e-06 -2.e-06 -1.e-06]
+  Std per channel:  [1.6e-05 1.1e-05 5.0e-06 9.0e-06 2.0e-05 2.3e-05 3.2e-05 1.1e-05]
+  Overall mean:     -0.000
+  Overall std:      0.000
+
+File: recording_subject_500_session_1_raw.fif
+  Mean per channel: [ 5.50e-05 -3.30e-05  1.60e-05  1.57e-04  2.15e-04  1.60e-04  1.94e-04
+  1.52e-04]
+  Std per channel:  [9.0e-06 7.0e-06 2.0e-06 7.0e-06 1.1e-05 1.0e-05 1.2e-05 1.0e-05]
+  Overall mean:     0.000
+  Overall std:      0.000
+
