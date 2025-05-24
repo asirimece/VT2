@@ -244,7 +244,13 @@ class MTLTrainer:
         model.to(self.device)
         model.eval()
         sids_list, true_list, pred_list = [], [], []
-
+    
+        
+        def to_numpy_list(x):
+            if isinstance(x, torch.Tensor):
+                return x.cpu().numpy().tolist()
+            return np.asarray(x).tolist()
+        
         with torch.no_grad():
             for X, y, sids, cids in loader:
                 X = X.to(self.device, dtype=torch.float)
@@ -254,9 +260,9 @@ class MTLTrainer:
                 outputs = model(X, cids)
                 preds   = outputs.argmax(dim=1)
 
-                sids_list.extend(sids.cpu().numpy().tolist())
-                true_list.extend(y.cpu().numpy().tolist())
-                pred_list.extend(preds.cpu().numpy().tolist())
+                sids_list.extend(to_numpy_list(sids))
+                true_list.extend(to_numpy_list(y))
+                pred_list.extend(to_numpy_list(preds))
 
         acc = (np.array(pred_list) == np.array(true_list)).mean()
 

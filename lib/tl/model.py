@@ -25,7 +25,9 @@ class TLModel(nn.Module):
         )
         
     def forward(self, x, subject_ids):
+        # Convert subject_ids to integers if they are strings
         if not torch.is_tensor(subject_ids):
+            subject_ids = [int(s) if isinstance(s, str) else s for s in subject_ids]
             subject_ids = torch.tensor(subject_ids, dtype=torch.long, device=x.device)
         else:
             subject_ids = subject_ids.to(x.device)
@@ -43,6 +45,7 @@ class TLModel(nn.Module):
             head = self.mtl_net.heads[head_key]
             outputs.append(head(features[i : i + 1]))
         return torch.cat(outputs, dim=0)
+
     
 
     def add_new_head(self, subject_id, feature_dim=None, dummy_input=None):
