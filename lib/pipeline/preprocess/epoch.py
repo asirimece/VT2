@@ -20,7 +20,7 @@ def create_macro_epochs(raw: mne.io.Raw, dataset_config) -> mne.Epochs:
     )
     return epochs
 
-def extract_time_locked_epochs(raw, tmin, tmax, keep_codes=(1,2,3)):
+def extract_time_locked_epochs(raw, tmin, tmax, keep_codes=(1,2)):
     """
     Extract only epochs for left hand, right hand, and rest events.
     By default, event codes: '0'->1, '1'->2, '2'->3
@@ -38,7 +38,7 @@ def extract_time_locked_epochs(raw, tmin, tmax, keep_codes=(1,2,3)):
     )
     return epochs
 
-def crop_subepochs(epochs, window_length, step_size, keep_codes=(1,2,3)):
+def crop_subepochs(epochs, window_length, step_size, keep_codes=(1,2)):
     """
     Crops epochs to subepochs and remaps event codes 1/2/3 → 0/1/2.
     """
@@ -90,7 +90,7 @@ def crop_subepochs(epochs, window_length, step_size, keep_codes=(1,2,3)):
     )
     return new_epochs
 
-def time_lock_and_slide_epochs(raw, tmin, tmax, window_length, step_size, keep_codes=(1,2,3)):
+def time_lock_and_slide_epochs(raw, tmin, tmax, window_length, step_size, keep_codes=(1,2)):
     """
     Combines steps for 3-class MI (left hand, right hand, rest).
     - keep_codes can be changed for ablation, e.g. (1,2) or (1,3)

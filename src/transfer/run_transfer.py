@@ -22,8 +22,8 @@ def run(config: DictConfig) -> None:
    with open("./dump/preprocessed_data_custom.pkl", "rb") as f:
         preprocessed_data = pickle.load(f)
         
-   #features = FeatureExtractor.run(config, preprocessed_data)
-   #save_features(features, config.transform.output_file)
+   features = FeatureExtractor.run(config, preprocessed_data)
+   save_features(features, config.transform.output_file)
    
    with open("./dump/features.pkl", "rb") as f:
         features = pickle.load(f)
