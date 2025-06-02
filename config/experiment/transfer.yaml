@@ -33,11 +33,17 @@ experiment:
 
     model:
       n_outputs: 3
+      backbone:
+        dropout: 0.5
+        n_times: 400
+      head:
+        hidden_dim: 128
+        dropout: 0.5
 
     training:
-      n_runs: 3
+      n_runs: 1
       seed_start: 42
-      epochs: 100
+      epochs: 50
       batch_size: 64
       #learning_rate: [0.001, 0.005, 0.01]   
       learning_rate: [0.0001, 0.0001, 0.0001]
@@ -57,9 +63,9 @@ experiment:
     freeze_until_block: "conv_2"  # freeze up to this layer, or null/None for none
     backbone_lr: 0.00001          # Lower LR for backbone
     head_lr: 0.001                # Higher LR for head(s)
-    n_runs: 3
+    n_runs: 1
     seed_start: 42
-    epochs: 100
+    epochs: 50
     #lr: 0.001
     lr: 0.0001
     weight_decay: 0.001
@@ -72,6 +78,8 @@ experiment:
     model:
       n_outputs: 3
       n_clusters_pretrained: 4   # Number of clusters used during MTL pretraining.
+    head_hidden_dim: 128
+    head_dropout: 0.5
 
   evaluators:
     quantitative:

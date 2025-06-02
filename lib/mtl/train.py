@@ -167,11 +167,14 @@ class MTLTrainer:
 
     def _build_model(self, n_chans: int, n_clusters: int):
         backbone_kwargs = OmegaConf.to_container(self.mtl_cfg.backbone, resolve=True)
+        head_kwargs = OmegaConf.to_container(self.mtl_cfg.model.head, resolve=True)
+
         return MultiTaskDeep4Net(
             n_chans         = n_chans,
             n_outputs       = self.mtl_cfg.model.n_outputs,
             n_clusters      = n_clusters,
             backbone_kwargs = backbone_kwargs,
+            head_kwargs     = head_kwargs,
         )
 
     def _build_optimizer(self, model, lr: float):
@@ -218,7 +221,10 @@ class MTLTrainer:
                 outputs = model(X, cids)
                 loss    = criterion(outputs, y)
 
-                penalty = sum(torch.sum(h.bias**2) for h in model.heads.values())
+                penalty = sum(
+                    torch.sum(p**2) for h in model.heads.values()
+                    for n, p in h.named_parameters() if "bias" in n
+                )
                 loss = loss + lambda_bias * penalty
 
                 loss.backward()

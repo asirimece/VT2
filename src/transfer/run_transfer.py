@@ -23,12 +23,15 @@ def run(config: DictConfig) -> None:
           preprocessed_data = pickle.load(f)
 
 
-     DeepFeatureExtractor().extract_and_save(
-     preprocessed_data,
-     output_path="./dump/deep_features.pkl",
-     subset='train'
-     )
-
+     #DeepFeatureExtractor().extract_and_save(
+     #preprocessed_data,
+     #output_path="./dump/deep_features.pkl",
+     #subset='train'
+     #)
+     
+     with open("./dump/deep_features.pkl", "rb") as f:
+          features = pickle.load(f)
+          
      trainer = MTLTrainer(config.experiment, config.model)
      mtl_wrapper = trainer.run()
 
