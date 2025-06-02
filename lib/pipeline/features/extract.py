@@ -169,7 +169,33 @@ class FeatureExtractor:
         else:
             logger.info(f"Skipped PCA: {D_pool} dims <= {threshold}")
 
-        fs_cfg = config.transform.feature_selection.kwargs
+        fs_block = getattr(config.transform, 'feature_selection', None)
+        fs_cfg = getattr(fs_block, 'kwargs', None)
+
+        if fs_cfg is not None:
+            svc = SVC(kernel='linear', C=fs_cfg.get('svc_C', 1.0), random_state=42)
+            rfecv = RFECV(
+                estimator=svc,
+                step=fs_cfg.get('step', 5),
+                cv=fs_cfg.get('cv', 3),
+                scoring=fs_cfg.get('scoring', 'accuracy'),
+                min_features_to_select=fs_cfg.get('min_features_to_select', 1),
+                n_jobs=-1
+            )
+            logger.info(f"Fitting RFECV on pooled train: {X_pool.shape} \n This will take a while!")
+            rfecv.fit(X_pool, y_pool)
+            logger.info(f"RFECV complete: {rfecv.n_features_} features selected")
+
+            selected = {}
+            for subj, sessions in raw_feats.items():
+                selected[subj] = {}
+                for label, d in sessions.items():
+                    X_sel = rfecv.transform(d['combined'])
+                    selected[subj][label] = {"combined": X_sel, "labels": d['labels']}
+        else:
+            logger.info("RFECV skipped: feature_selection.kwargs not found.")
+            selected = raw_feats
+
         svc = SVC(kernel='linear', C=fs_cfg.get('svc_C', 1.0), random_state=42)
         rfecv = RFECV(
             estimator=svc,

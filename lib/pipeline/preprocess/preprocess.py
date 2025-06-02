@@ -6,8 +6,7 @@ import mne
 import numpy as np
 from omegaconf import DictConfig
 from .preprocessors import (
-    bandpass_filter,
-    exponential_moving_standardization
+    bandpass_filter
 )
 from .epoch import create_macro_epochs, crop_subepochs
 from lib.logging import logger
@@ -81,23 +80,9 @@ class Preprocessor:
                 shuffle=True
             )
 
-            # Standardize (EMS)
-            standardized_train, esm_params = exponential_moving_standardization(
-                train_epochs,
-                smoothing_factor=self.preproc_config.exponential_moving_standardization.kwargs.smoothing_factor,
-                eps=self.preproc_config.exponential_moving_standardization.kwargs.eps,
-                return_params=True
-            )
-            standardized_test = exponential_moving_standardization(
-                test_epochs,
-                smoothing_factor=self.preproc_config.exponential_moving_standardization.kwargs.smoothing_factor,
-                eps=self.preproc_config.exponential_moving_standardization.kwargs.eps,
-                esm_params=esm_params
-            )
-
             results[subj] = {
-                "train": standardized_train,
-                "test": standardized_test
+                "train": train_epochs,
+                "test": test_epochs
             }
 
         return results

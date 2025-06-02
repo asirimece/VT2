@@ -25,8 +25,8 @@ def run(config: DictConfig) -> None:
    features = FeatureExtractor.run(config, preprocessed_data)
    save_features(features, config.transform.output_file)
    
-   with open("./dump/features.pkl", "rb") as f:
-        features = pickle.load(f)
+   #with open("./dump/features.pkl", "rb") as f:
+        #features = pickle.load(f)
         
    trainer = MTLTrainer(config.experiment, config.model)
    mtl_wrapper = trainer.run()

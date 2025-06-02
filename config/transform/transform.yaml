@@ -36,7 +36,7 @@ feature_extraction:
     kwargs:
       explained_variance: 0.95
 
-feature_selection:
+feature_selection: {}
   #name: lasso
   #kwargs:
     #alpha: 0.01
@@ -48,14 +48,14 @@ feature_selection:
     #cv: 5
     #scoring: neg_mean_squared_error
 
-  name: rfecv
-  kwargs:
-    step: 30
-    cv: 3
-    scoring: accuracy
-    min_features_to_select: 10
+  #name: rfecv
+  #kwargs:
+    #step: 30
+    #cv: 3
+    #scoring: accuracy
+    #min_features_to_select: 10
     #param_grid:
       #estimator__C: [0.1, 1.0, 10.0] 
-    svc_C: 1.0  # for the internal linear SVC.
+    #svc_C: 1.0  # for the internal linear SVC.
         
 output_file: "./dump/features.pkl"
