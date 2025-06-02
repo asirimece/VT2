@@ -1,4 +1,4 @@
-import pickle
+"""import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans
@@ -103,10 +103,10 @@ plt.tight_layout()
 plt.savefig("./dump/cluster_quality_concat_scaled_summary.png")
 plt.close()
 print("Saved summary plot: ./dump/cluster_quality_concat_scaled_summary.png")
+"""
 
 
-
-"""import pickle
+import pickle
 import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score, davies_bouldin_score
@@ -125,6 +125,17 @@ X = np.stack([
 ])  # shape: (n_subjects, n_features)
 
 print("Subject feature matrix shape (should be n_subjects x n_features):", X.shape)
+
+# ---- Print stats before scaling ----
+print("FBCSP features: mean =", X.mean(), ", std =", X.std())
+
+# ---
+print("Per-feature std in FBCSP:", X.std(axis=0))
+plt.imshow(X, aspect="auto", cmap="viridis")
+plt.colorbar()
+plt.title("FBCSP Matrix (Subjects × Features)")
+plt.savefig("./dump/fbcsp_matrix_visual.png")
+plt.close()
 
 # ---- Try different n_clusters ----
 cluster_range = [2, 3, 4, 5]
@@ -168,4 +179,3 @@ plt.tight_layout()
 plt.savefig("./dump/cluster_quality_summary.png")
 plt.close()
 print("Saved summary plot: ./dump/cluster_quality_summary.png")
-"""

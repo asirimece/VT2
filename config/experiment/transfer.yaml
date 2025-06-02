@@ -7,13 +7,13 @@ experiment:
   clustering:
     method: "kmeans"
     kmeans:
-      n_clusters: 5
+      n_clusters: 2
       init: "k-means++"
       max_iter: 300
       n_init: 10
       random_state: 42
     hierarchical:
-      n_clusters: 5
+      n_clusters: 2
       linkage: "ward"
     dbscan:
       eps: 1.0
@@ -71,7 +71,7 @@ experiment:
 
     model:
       n_outputs: 3
-      n_clusters_pretrained: 5  # Number of clusters used during MTL pretraining.
+      n_clusters_pretrained: 2  # Number of clusters used during MTL pretraining.
 
   evaluators:
     quantitative:
