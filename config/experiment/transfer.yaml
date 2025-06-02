@@ -25,7 +25,7 @@ experiment:
     backbone:
       #n_times: 500  
       n_times: 600  # new dataset
-      drop_prob: 0.15
+      drop_prob: 0.1
       n_filters_time: 25
       n_filters_spat: 25
       filter_time_length: 10
@@ -38,7 +38,7 @@ experiment:
         n_times: 400
       head:
         hidden_dim: 128
-        dropout: 0.5
+        dropout: 0.25
 
     training:
       n_runs: 1
@@ -47,7 +47,7 @@ experiment:
       batch_size: 64
       #learning_rate: [0.001, 0.005, 0.01]   
       learning_rate: [0.0001, 0.0001, 0.0001]
-      lambda_bias: [1e-5, 1e-5, 1e-5]  
+      lambda_bias: [0.0, 0.0, 0.0]  
       optimizer:
         name: "Adam"            
         weight_decay: 0.001     
@@ -79,7 +79,7 @@ experiment:
       n_outputs: 3
       n_clusters_pretrained: 4   # Number of clusters used during MTL pretraining.
     head_hidden_dim: 128
-    head_dropout: 0.5
+    head_dropout: 0.25
 
   evaluators:
     quantitative:
