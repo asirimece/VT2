@@ -41,14 +41,21 @@ class SubjectClusterer:
     def _load_features(self):
         with open(self.features_file, "rb") as f:
             return pickle.load(f)
-
+    
     def _compute_subject_representation(self):
         subject_repr = {}
-        for subj, sessions in self.features.items():
-            reps = [sess['combined'] for sess in sessions.values()]
-            reps_concat = np.concatenate(reps, axis=0)  
-            subject_repr[subj] = np.mean(reps_concat, axis=0)
+        for subj, feats in self.features.items():
+            # Check if it's a dict (old format) or ndarray (deep features)
+            if isinstance(feats, dict):
+                # "traditional" features.pkl structure
+                reps = [sess['combined'] for sess in feats.values()]
+                reps_concat = np.concatenate(reps, axis=0)
+                subject_repr[subj] = np.mean(reps_concat, axis=0)
+            else:
+                # new deep features: feats is (n_trials, feat_dim)
+                subject_repr[subj] = np.mean(feats, axis=0)
         return subject_repr
+
 
     def cluster_subjects(self, method=None):
         if method is None:

@@ -63,10 +63,7 @@ class MTLEvaluator:
             all_feats = pickle.load(f)
 
         self.subject_reprs = {
-            subj: np.mean(
-                np.concatenate([sess["combined"] for sess in sessions.values()], axis=0),
-                axis=0
-            )
+            subj: np.mean(sessions, axis=0)
             for subj, sessions in all_feats.items()
         }
 

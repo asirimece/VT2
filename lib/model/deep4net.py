@@ -8,7 +8,7 @@ class Deep4NetModel:
     
     def _build_model(self):
         if isinstance(self.config, dict):
-            in_chans = self.config.get("in_chans", 22)
+            in_chans = self.config.get("in_chans", 8)
             #n_classes = self.config.get("n_classes", 4)
             n_classes = self.config.get("n_classes",3)
             n_times = self.config.get("n_times", 1000)

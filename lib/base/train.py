@@ -139,9 +139,7 @@ class BaselineTrainer:
 
 
     def _train_subject(self, subj, subject_data):
-        #tr = subject_data["0train"]
         tr = subject_data["train"]
-        #te = subject_data["1test"]
         te = subject_data["test"]
         Xtr, ytr = tr.get_data(), tr.events[:, -1]
         Xte, yte = te.get_data(),  te.events[:, -1]
@@ -149,8 +147,8 @@ class BaselineTrainer:
         tid_te   = te.events[:, 1]
 
         common = {k: self.model_config[k]
-                  for k in ["name","in_chans","n_classes","n_times","final_conv_length"]
-                  if k in self.model_config}
+                for k in ["name","in_chans","n_classes","n_times","final_conv_length"]
+                if k in self.model_config}
         merged_cfg = {**common, **self.model_config.get("single", {})}
 
         results_runs = []
@@ -160,15 +158,25 @@ class BaselineTrainer:
             np.random.seed(seed)
             torch.manual_seed(seed)
             logger.info(f"Single subject run {run_i+1}/{self.single_cfg.n_runs}"
-                  f" for Subject {subj} (seed={seed})")
+                f" for Subject {subj} (seed={seed})")
 
-            _, trial_res = self._train_deep4net_model(
+            model, trial_res = self._train_deep4net_model(
                 Xtr, ytr, tid_tr,
                 Xte, yte, tid_te,
                 merged_cfg, self.single_cfg,
                 device=self.device
             )
             results_runs.append(trial_res)
+
+            # Save model weights for this subject/run
+            model_dir = os.path.dirname(self.base_config.logging.single_results_model_path)
+            os.makedirs(model_dir, exist_ok=True)
+            # Each subject/run: .../single_subject_training_SUBJECTID_RUN.pth
+            model_save_path = self.base_config.logging.single_results_model_path.replace(
+                ".pth", f"_{subj}_run{run_i+1}.pth"
+            )
+            torch.save(model.state_dict(), model_save_path)
+            logger.info(f"Single-subject weights for {subj} run {run_i+1} saved to {model_save_path}")
 
         return results_runs
 
@@ -202,6 +210,7 @@ class BaselineTrainer:
         merged_cfg = {**common, **self.model_config.get("pooled", {})}
 
         pooled_runs = []
+        last_model = None  # track for saving
         for run_i in range(self.pooled_cfg.n_runs):
             seed = self.pooled_cfg.seed_start + run_i
             random.seed(seed)
@@ -209,13 +218,21 @@ class BaselineTrainer:
             torch.manual_seed(seed)
             logger.info(f"Pooled run {run_i+1}/{self.pooled_cfg.n_runs} (seed={seed})")
 
-            _, trial_res = self._train_deep4net_model(
+            model, trial_res = self._train_deep4net_model(
                 Xtr, ytr, tid_tr,
                 Xte, yte, tid_te,
                 merged_cfg, self.pooled_cfg,
                 device=self.device
             )
             pooled_runs.append(trial_res)
+            last_model = model
+
+        # After all runs, save the last pooled model weights
+        pooled_model_path = self.base_config.logging.pooled_results_model_path
+        model_dir = os.path.dirname(pooled_model_path)
+        os.makedirs(model_dir, exist_ok=True)
+        torch.save(last_model.state_dict(), pooled_model_path)
+        logger.info(f"Pooled Deep4Net weights saved to {pooled_model_path}")
 
         return pooled_runs
 
