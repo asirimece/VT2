@@ -122,12 +122,19 @@ class TLTrainer:
     def _build_model(self, X_train, subject_id: int):
         n_chans = X_train.shape[1]
         window_samples = X_train.shape[2]
+        
+        head_kwargs = {
+            "hidden_dim": self.config.get("head_hidden_dim", 128),
+            "dropout": self.config.get("head_dropout", 0.5)
+        }
         model = TLModel(
             n_chans=n_chans,
             n_outputs=self.config.model.n_outputs,
             n_clusters_pretrained=self.config.model.n_clusters_pretrained,
-            window_samples=window_samples
+            window_samples=window_samples,
+            head_kwargs=head_kwargs
         )
+
         # Load pretrained weights if available
         if self._pretrained_weights is not None:
             model.load_state_dict(self._pretrained_weights)
