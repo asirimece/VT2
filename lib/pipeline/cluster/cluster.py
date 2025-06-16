@@ -45,10 +45,24 @@ class SubjectClusterer:
     def _compute_subject_representation(self):
         subject_repr = {}
         for subj, sessions in self.features.items():
-            reps = [sess['combined'] for sess in sessions.values()]
-            reps_concat = np.concatenate(reps, axis=0)  
-            subject_repr[subj] = np.mean(reps_concat, axis=0)
+            # CASE 1: sessions is a dict (e.g., 'train', 'test')
+            if isinstance(sessions, dict):
+                combined_all = []
+                for sess in sessions.values():
+                    if isinstance(sess, dict) and 'combined' in sess:
+                        combined_all.append(sess['combined'])
+                if combined_all:
+                    reps_concat = np.concatenate(combined_all, axis=0)
+                    subject_repr[subj] = np.mean(reps_concat, axis=0)
+                else:
+                    raise ValueError(f"No valid 'combined' features for subject {subj}")
+            # CASE 2: sessions is already an array (legacy format)
+            elif isinstance(sessions, np.ndarray):
+                subject_repr[subj] = np.mean(sessions, axis=0)
+            else:
+                raise TypeError(f"Unsupported session type for subject {subj}: {type(sessions)}")
         return subject_repr
+
 
     def cluster_subjects(self, method=None):
         if method is None:

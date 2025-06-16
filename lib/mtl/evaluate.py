@@ -62,13 +62,23 @@ class MTLEvaluator:
         with open(feat_file, "rb") as f:
             all_feats = pickle.load(f)
 
-        self.subject_reprs = {
-            subj: np.mean(
-                np.concatenate([sess["combined"] for sess in sessions.values()], axis=0),
-                axis=0
-            )
-            for subj, sessions in all_feats.items()
-        }
+        self.subject_reprs = {}
+        for subj, data in all_feats.items():
+            if isinstance(data, dict):
+                # Format: {split: {"combined": ndarray}}, as in {"train": ..., "test": ...}
+                reps = []
+                for split_data in data.values():
+                    if isinstance(split_data, dict) and "combined" in split_data:
+                        reps.append(split_data["combined"])
+                if reps:
+                    all_data = np.concatenate(reps, axis=0)
+                    self.subject_reprs[subj] = np.mean(all_data, axis=0)
+            elif isinstance(data, np.ndarray):
+                # Already a flattened feature array (e.g. [n_samples, n_features])
+                self.subject_reprs[subj] = np.mean(data, axis=0)
+            else:
+                raise TypeError(f"Unexpected type for subject {subj}: {type(data)}")
+
 
     def evaluate(self):
         viz_list = self.experiment_cfg.evaluators.qualitative.visualizations
