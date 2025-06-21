@@ -1,0 +1,27 @@
+# augment.yaml
+defaults:
+  - _self_
+
+# conf/augment/augment.yaml
+augmentations:
+  gaussian_noise:
+    enabled: true
+    sigma: 0.02       # 2% of per-epoch std
+  time_warp:
+    enabled: false
+    warp_ratio: 0.15 # ±15% local warp
+    max_seg: 0.5     # up to 50% of the 600-sample epoch
+  frequency_shift:
+    enabled: false
+    fs: 200          # matches your sfreq in dataset config
+    shift_hz: 1.0    # ±1 Hz spectral shift
+  mixup:
+    enabled: false
+    alpha: 0.2       # Beta(0.2,0.2) mixup
+
+# apply_in:
+#   phase1:      # options: phase1, phase2
+#     - gaussian_noise
+#     - time_warp
+#   phase2:
+#     - mixup

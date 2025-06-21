@@ -1,42 +1,45 @@
-import hashlib
+# lib/tl/train.py
+
 import os
 import pickle
-import torch
+import random
 import numpy as np
-from tqdm.auto import tqdm
+import torch
 from torch.utils.data import DataLoader
 from torch import nn
-from omegaconf import DictConfig
+from tqdm.auto import tqdm
 from collections import defaultdict
+from omegaconf import DictConfig
+
 from lib.dataset.dataset import TLSubjectDataset
-from lib.tl.model import TLModel
+from lib.tl.model   import TLModel
 from lib.tl.evaluate import TLEvaluator
 from lib.utils.utils import _prefix_mtl_keys
 from lib.logging import logger
+from lib.augment.augment import mixup_batch
 
 logger = logger.get()
 
 
-# Helper to freeze backbone up to given conv block index
 def freeze_backbone_layers(backbone, freeze_until_layer=None):
     """
-    Freezes all backbone layers up to (and including) freeze_until_layer.
-    If freeze_until_layer is None, freezes the entire backbone.
+    Freezes backbone layers up to (and including) the named layer.
     """
     found = False
     for name, module in backbone.named_children():
-        for param in module.parameters():
-            param.requires_grad = False
-        if freeze_until_layer is not None and name == freeze_until_layer:
+        for p in module.parameters():
+            p.requires_grad = False
+        if freeze_until_layer and name == freeze_until_layer:
             found = True
             break
     if freeze_until_layer and not found:
-        raise ValueError(f"Layer {freeze_until_layer} not found in backbone (got: {[n for n, _ in backbone.named_children()]})")
-    
+        raise ValueError(f"freeze_until_layer '{freeze_until_layer}' not found")
+
+
 class TLWrapper:
     def __init__(self, ground_truth, predictions):
         self.ground_truth = ground_truth
-        self.predictions = predictions
+        self.predictions  = predictions
 
     def save(self, path):
         with open(path, "wb") as f:
@@ -50,162 +53,166 @@ class TLWrapper:
 
 class TLTrainer:
     def __init__(self, config: DictConfig):
-        self.config = config.experiment.experiment.transfer
-        self.device = torch.device(self.config.device)
-        self.preprocessed_data_path = config.experiment.experiment.preprocessed_file
+        # config.experiment.experiment.transfer
+        root_cfg = config
+        self.cfg     = root_cfg.experiment.experiment.transfer
+        self.device  = torch.device(self.cfg.device)
+        self.data_fp = root_cfg.experiment.experiment.preprocessed_file
+
+        # Phase2 mixup toggle & alpha
+        self.do_mixup    = bool(self.cfg.phase2_aug)
+        self.mixup_alpha = float(root_cfg.augment.augmentations.mixup.alpha)
+
         self._pretrained_weights = None
-        self.model = None
+        self.model     = None
         self.optimizer = None
         self.criterion = nn.CrossEntropyLoss()
 
     def _set_seed(self, seed: int):
-        import random
-        torch.manual_seed(seed)
-        np.random.seed(seed)
         random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(seed)
 
     def run(self):
-        with open(self.preprocessed_data_path, "rb") as f:
+        # 1) Load all preprocessed epochs
+        with open(self.data_fp, "rb") as f:
             preprocessed_data = pickle.load(f)
 
         subject_ids = sorted(preprocessed_data.keys())
         all_results = defaultdict(list)
 
-        if not self.config.init_from_scratch:
-            self._pretrained_weights = _prefix_mtl_keys(
-                torch.load(self.config.pretrained_mtl_model, map_location=self.device)
-            )
+        # 2) Load pretrained MTL weights if not from scratch
+        if not self.cfg.init_from_scratch:
+            state = torch.load(self.cfg.pretrained_mtl_model, map_location=self.device)
+            self._pretrained_weights = _prefix_mtl_keys(state)
 
-        for run_idx in range(self.config.n_runs):
-            seed = self.config.seed_start + run_idx
+        # 3) Multiple runs
+        for run_idx in range(self.cfg.n_runs):
+            seed = self.cfg.seed_start + run_idx
             self._set_seed(seed)
 
-            out_dir = os.path.join(self.config.tl_model_output, f"run_{run_idx}")
+            out_dir = os.path.join(self.cfg.tl_model_output, f"run_{run_idx}")
             os.makedirs(out_dir, exist_ok=True)
 
-            for i, subject_id in enumerate(subject_ids):
-                weights_path = os.path.join(out_dir, f"tl_{subject_id}_model.pth")
-                results_path = os.path.join(out_dir, f"tl_{subject_id}_results.pkl")
+            # iterate subjects
+            for subj in subject_ids:
+                weights_path = os.path.join(out_dir, f"tl_{subj}_model.pth")
+                results_path = os.path.join(out_dir, f"tl_{subj}_results.pkl")
 
-                X_train, y_train, X_test, y_test = self._load_subject_data(preprocessed_data, subject_id)
-                self.model = self._build_model(X_train, subject_id)
+                X_tr, y_tr, X_te, y_te = self._load_subject_data(preprocessed_data, subj)
+                self.model     = self._build_model(X_tr, subj)
                 self.optimizer = self._build_optimizer()
 
-                train_loader, test_loader = self._build_dataloaders(X_train, y_train, X_test, y_test)
-                self._train(train_loader, subject_id)
-                wrapper = self._evaluate(test_loader, subject_id)
+                train_loader, test_loader = self._build_dataloaders(X_tr, y_tr, X_te, y_te)
+                self._train(train_loader, subj)
+                wrapper = self._evaluate(test_loader, subj)
 
                 wrapper.save(results_path)
                 torch.save(self.model.state_dict(), weights_path)
-
-                all_results[subject_id].append(wrapper)
+                all_results[subj].append(wrapper)
 
         return all_results
-    
-    def _load_subject_data(self, preprocessed_data, subject_id: int):
-        if subject_id not in preprocessed_data:
-            raise ValueError(f"Subject '{subject_id}' not found in preprocessed data.")
-        
-        subj_data = preprocessed_data[subject_id]
-        #train_ep = subj_data["0train"]
-        train_ep = subj_data["train"]
-        #test_ep = subj_data["1test"]
-        test_ep = subj_data["test"]
-        
-        X_train, y_train = train_ep.get_data(), train_ep.events[:, -1]
-        X_test, y_test = test_ep.get_data(), test_ep.events[:, -1]
 
-        return X_train, y_train, X_test, y_test 
-    
-    def _build_model(self, X_train, subject_id: int):
-        n_chans = X_train.shape[1]
-        window_samples = X_train.shape[2]
-        
+    def _load_subject_data(self, preprocessed_data, subject_id: int):
+        subj_data = preprocessed_data[subject_id]
+        X_train = subj_data["train"].get_data()
+        y_train = subj_data["train"].events[:, -1]
+        X_test  = subj_data["test"].get_data()
+        y_test  = subj_data["test"].events[:, -1]
+        return X_train, y_train, X_test, y_test
+
+    def _build_model(self, X_train: np.ndarray, subject_id: int):
+        n_chans, window = X_train.shape[1], X_train.shape[2]
         head_kwargs = {
-            "hidden_dim": self.config.get("head_hidden_dim", 128),
-            "dropout": self.config.get("head_dropout", 0.5)
+            "hidden_dim": self.cfg.head_hidden_dim,
+            "dropout":    self.cfg.head_dropout
         }
         model = TLModel(
-            n_chans=n_chans,
-            n_outputs=self.config.model.n_outputs,
-            n_clusters_pretrained=self.config.model.n_clusters_pretrained,
-            window_samples=window_samples,
+            n_chans=self.cfg.model.n_outputs,  # or X_train.shape[1]
+            n_outputs=self.cfg.model.n_outputs,
+            n_clusters_pretrained=self.cfg.model.n_clusters_pretrained,
+            window_samples=window,
             head_kwargs=head_kwargs
         )
 
-        # Load pretrained weights if available
+        # load pretrained
         if self._pretrained_weights is not None:
             model.load_state_dict(self._pretrained_weights)
-            logger.info("Loaded pretrained MTL weights into TL model.")
+            logger.info("Loaded pretrained MTL weights")
         else:
-            logger.info("Training TL model from scratch.")
+            logger.info("Training from scratch")
 
-        # Partial backbone freeze (up to freeze_until_block, inclusive)
-        freeze_until = getattr(self.config, "freeze_until_layer", None)
-        if freeze_until is not None:
-            freeze_backbone_layers(model.shared_backbone, freeze_until_layer=freeze_until)
-            logger.info(f"Froze backbone up to {freeze_until}")
-        elif getattr(self.config, "freeze_backbone", False):
-            for param in model.shared_backbone.parameters():
-                param.requires_grad = False
-            logger.info("Backbone frozen.")
+        # partial or full freeze
+        if self.cfg.freeze_until_layer:
+            freeze_backbone_layers(model.shared_backbone, self.cfg.freeze_until_layer)
+            logger.info(f"Froze backbone up to {self.cfg.freeze_until_layer}")
+        elif self.cfg.freeze_backbone:
+            for p in model.shared_backbone.parameters():
+                p.requires_grad = False
+            logger.info("Froze entire backbone")
 
-
-        # Add subject-specific head if needed
-        feature_dim = self.config.get("feature_dim", None)
-        model.add_new_head(subject_id, feature_dim=feature_dim)
+        # add a new head for this subject
+        model.add_new_head(subject_id)
         return model.to(self.device)
 
     def _build_optimizer(self):
-        # Collect backbone and head params for differential LR
-        backbone_params = []
-        head_params = []
-        for name, param in self.model.named_parameters():
-            if not param.requires_grad:
+        b_params, h_params = [], []
+        for n, p in self.model.named_parameters():
+            if not p.requires_grad:
                 continue
-            if 'shared_backbone' in name:
-                backbone_params.append(param)
+            if "shared_backbone" in n:
+                b_params.append(p)
             else:
-                head_params.append(param)
-        backbone_lr = getattr(self.config, "backbone_lr", self.config.lr)
-        head_lr = getattr(self.config, "head_lr", self.config.lr)
+                h_params.append(p)
         return torch.optim.Adam([
-            {"params": backbone_params, "lr": backbone_lr, "weight_decay": self.config.weight_decay},
-            {"params": head_params,     "lr": head_lr,     "weight_decay": 0.0}
+            {"params": b_params, "lr": self.cfg.backbone_lr, "weight_decay": self.cfg.weight_decay},
+            {"params": h_params, "lr": self.cfg.head_lr,     "weight_decay": 0.0}
         ])
 
-    def _build_dataloaders(self, X_train, y_train, X_test, y_test):
-        train_ds = TLSubjectDataset(X_train, y_train)
-        test_ds = TLSubjectDataset(X_test, y_test)
-
-        train_loader = DataLoader(train_ds, batch_size=self.config.batch_size, shuffle=True)
-        test_loader = DataLoader(test_ds, batch_size=self.config.batch_size, shuffle=False)
+    def _build_dataloaders(self, X_tr, y_tr, X_te, y_te):
+        train_ds = TLSubjectDataset(X_tr, y_tr)
+        test_ds  = TLSubjectDataset(X_te, y_te)
+        train_loader = DataLoader(train_ds, batch_size=self.cfg.batch_size, shuffle=True)
+        test_loader  = DataLoader(test_ds, batch_size=self.cfg.batch_size, shuffle=False)
         return train_loader, test_loader
 
     def _train(self, train_loader, subject_id: int):
         self.model.train()
-        for epoch in range(1, self.config.epochs + 1):
-            total_loss, correct, count = 0.0, 0, 0
-            pbar = tqdm(train_loader, desc=f"Epoch {epoch}/{self.config.epochs}", leave=False)
+        for epoch in range(1, self.cfg.epochs + 1):
+            total_loss, correct, count = 0, 0, 0
+            pbar = tqdm(train_loader, desc=f"Epoch {epoch}/{self.cfg.epochs}", leave=False)
             for X, y in pbar:
-                X, y = X.to(self.device), y.to(self.device)
+                # Phase2 mixup on raw windows
+                if self.do_mixup:
+                    X_np = X.numpy()
+                    y_np = y.numpy()
+                    Xm, ya, yb, lam = mixup_batch(X_np, y_np, self.mixup_alpha)
+                    X  = torch.from_numpy(Xm).to(self.device)
+                    ya = torch.from_numpy(ya).long().to(self.device)
+                    yb = torch.from_numpy(yb).long().to(self.device)
+                else:
+                    X, y = X.to(self.device), y.to(self.device)
+
                 self.optimizer.zero_grad()
                 outputs = self.model(X, [subject_id] * X.size(0))
-                loss = self.criterion(outputs, y)
+                if self.do_mixup:
+                    loss = lam * self.criterion(outputs, ya) + (1 - lam) * self.criterion(outputs, yb)
+                else:
+                    loss = self.criterion(outputs, y)
                 loss.backward()
                 self.optimizer.step()
 
                 preds = outputs.argmax(dim=1)
-                correct += (preds == y).sum().item()
+                correct += (preds == (ya if self.do_mixup else y)).sum().item()
                 count += y.size(0)
                 total_loss += loss.item() * y.size(0)
                 pbar.set_postfix(loss=f"{total_loss/count:.4f}", acc=f"{correct/count:.4f}")
-            
+
             print(f"[TLTrainer] Epoch {epoch}: Loss={total_loss/count:.4f}, Acc={correct/count:.4f}")
 
-    def _evaluate(self, test_loader: torch.utils.data.DataLoader, subject_id: int):
+    def _evaluate(self, test_loader, subject_id: int):
         self.model.eval()
         all_preds, all_labels = [], []
         with torch.no_grad():
@@ -217,5 +224,5 @@ class TLTrainer:
                 all_labels.extend(y.numpy())
         return TLWrapper(
             ground_truth=np.array(all_labels, dtype=int),
-            predictions=np.array(all_preds, dtype=int)
+            predictions =np.array(all_preds,  dtype=int)
         )

@@ -1,6 +1,7 @@
 defaults:
   - dataset: customEEG
   - transform: transform
+  - augment: augment
   - experiment: transfer
   - model: deep4net
   - hook: hook

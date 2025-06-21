@@ -75,6 +75,10 @@ experiment:
 
     tl_model_output: "dump/trained_models/tl"
 
+    # ← NEW flags to toggle augmentation in each phase
+    phase1_aug: true    # raw-signal augment in MTL backbone training
+    phase2_aug: true    # mixup augment in TL fine-tuning
+
     model:
       n_outputs: 3
       n_clusters_pretrained: 1   # Number of clusters used during MTL pretraining.

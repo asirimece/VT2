@@ -6,19 +6,19 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from omegaconf import OmegaConf, DictConfig
+
+from braindecode.models import Deep4Net
 from lib.dataset.dataset import EEGMultiTaskDataset
-from lib.mtl.model import MultiTaskDeep4Net
 from lib.pipeline.cluster.cluster import SubjectClusterer
 from lib.utils.utils import convert_state_dict_keys
 from lib.logging import logger
+from lib.augment.augment import apply_raw_augmentations  # <— import augmentation helper
+from lib.mtl.model import MultiTaskDeep4Net
 
 logger = logger.get()
 
 
 class MTLWrapper:
-    """
-    Wraps MTL results.
-    """
     def __init__(self, results_by_subject, cluster_assignments, additional_info):
         self.results_by_subject  = results_by_subject
         self.cluster_assignments = cluster_assignments
@@ -33,18 +33,20 @@ class MTLTrainer:
     def __init__(self,
                  experiment_cfg: DictConfig | str = "config/experiment/transfer.yaml",
                  model_cfg:      DictConfig | str = "config/model/deep4net.yaml"):
+        # Load configs
         self.experiment_cfg = (OmegaConf.load(experiment_cfg)
                                if isinstance(experiment_cfg, str)
                                else experiment_cfg)
         self.model_cfg      = (OmegaConf.load(model_cfg)
                                if isinstance(model_cfg, str)
                                else model_cfg)
+
         exp = self.experiment_cfg.experiment
         self.raw_fp       = exp.preprocessed_file
         self.features_fp  = exp.features_file
         self.cluster_cfg  = exp.clustering
-        self.mtl_cfg = exp.mtl
-        self.train_cfg = exp.mtl.training
+        self.mtl_cfg      = exp.mtl
+        self.train_cfg    = exp.mtl.training
 
         os.makedirs(exp.mtl.mtl_model_output, exist_ok=True)
         self.wrapper_path = os.path.join(exp.mtl.mtl_model_output, "mtl_wrapper.pkl")
@@ -53,33 +55,46 @@ class MTLTrainer:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def run(self) -> MTLWrapper:
+        # 1) Load raw preprocessed epochs
         with open(self.raw_fp, "rb") as f:
             raw_dict = pickle.load(f)
 
+        # 2) Build train/test arrays, applying Phase 1 augmentation on train
         X_tr, y_tr, sid_tr = [], [], []
         X_te, y_te, sid_te = [], [], []
+
+        do_aug = self.experiment_cfg.experiment.transfer.phase1_aug
+        aug_cfg = self.experiment_cfg.augment.augmentations
+
         for subj_id, splits in raw_dict.items():
-            #ep_tr = splits['0train']
+            # ----- TRAIN SPLIT -----
             ep_tr = splits['train']
-            X_tr.append(ep_tr.get_data())
-            y_tr.append(ep_tr.events[:,2])
-            sid_tr += [subj_id]*len(ep_tr.events)
+            X = ep_tr.get_data()           # shape (n_trials, n_ch, n_times)
+            if do_aug:
+                X = apply_raw_augmentations(X, aug_cfg)
+            y = ep_tr.events[:, 2]         # labels
+            X_tr.append(X)
+            y_tr.append(y)
+            sid_tr += [subj_id] * len(y)
 
-            #ep_te = splits['1test']
+            # ----- TEST SPLIT (no augmentation) -----
             ep_te = splits['test']
-            X_te.append(ep_te.get_data())
-            y_te.append(ep_te.events[:,2])
-            sid_te += [subj_id]*len(ep_te.events)
+            Xv = ep_te.get_data()
+            yv = ep_te.events[:, 2]
+            X_te.append(Xv)
+            y_te.append(yv)
+            sid_te += [subj_id] * len(yv)
 
-        X_tr = np.concatenate(X_tr, axis=0)
-        y_tr = np.concatenate(y_tr)
+        # Concatenate across subjects
+        X_tr   = np.concatenate(X_tr, axis=0)
+        y_tr   = np.concatenate(y_tr)
         sid_tr = np.array(sid_tr)
 
-        X_te = np.concatenate(X_te, axis=0)
-        y_te = np.concatenate(y_te)
+        X_te   = np.concatenate(X_te, axis=0)
+        y_te   = np.concatenate(y_te)
         sid_te = np.array(sid_te)
 
-        # Cluster
+        # 3) Cluster subjects (on saved features)
         subject_clusterer = SubjectClusterer(
             self.features_fp,
             OmegaConf.to_container(self.cluster_cfg, resolve=True)
@@ -88,34 +103,31 @@ class MTLTrainer:
             method=self.cluster_cfg.method
         )
         n_clusters = cluster_wrapper.get_num_clusters()
-
-        # Build a subject-cluster dict
         assignments = {sid: cluster_wrapper.labels[sid]
                        for sid in cluster_wrapper.subject_ids}
 
-        # If True, restrict to one cluster
+        # Optionally restrict to a single cluster (if configured)
         exp = self.experiment_cfg.experiment
         if getattr(exp, "restrict_to_cluster", False):
             if exp.cluster_id is None:
                 raise ValueError("cluster_id must be set when restrict_to_cluster is True")
-            assignments = {sid: cluster_wrapper.labels[sid]
-                        for sid in cluster_wrapper.subject_ids}
-            
             mask_tr = np.array([assignments[s] == exp.cluster_id for s in sid_tr])
             mask_te = np.array([assignments[s] == exp.cluster_id for s in sid_te])
             X_tr, y_tr, sid_tr = X_tr[mask_tr], y_tr[mask_tr], sid_tr[mask_tr]
             X_te, y_te, sid_te = X_te[mask_te], y_te[mask_te], sid_te[mask_te]
-            logger.info(f"Restricted MTL data to cluster {exp.cluster_id}: ")
+            logger.info(f"Restricted MTL data to cluster {exp.cluster_id}")
 
+        # 4) Build Datasets and Loaders
         train_ds = EEGMultiTaskDataset(X_tr, y_tr, sid_tr, cluster_wrapper)
         eval_ds  = EEGMultiTaskDataset(X_te, y_te, sid_te, cluster_wrapper)
         train_loader = DataLoader(train_ds, batch_size=self.train_cfg.batch_size, shuffle=True)
         eval_loader  = DataLoader(eval_ds,  batch_size=self.train_cfg.batch_size, shuffle=False)
 
+        # 5) Training loop
         lrs = OmegaConf.to_container(self.train_cfg.learning_rate, resolve=True)
         lbs = OmegaConf.to_container(self.train_cfg.lambda_bias,   resolve=True)
-        if not isinstance(lrs, list): lrs = [lrs]*self.train_cfg.n_runs
-        if not isinstance(lbs, list): lbs = [lbs]*self.train_cfg.n_runs
+        if not isinstance(lrs, list): lrs = [lrs] * self.train_cfg.n_runs
+        if not isinstance(lbs, list): lbs = [lbs] * self.train_cfg.n_runs
 
         results_by_subject = {sid: [] for sid in set(sid_tr) | set(sid_te)}
 
@@ -131,6 +143,7 @@ class MTLTrainer:
             self._train(model, train_loader, criterion, optimizer, λb)
             sids, gt, pred = self._evaluate(model, eval_loader)
 
+            # collect per-subject results
             run_map = {}
             for sid, t, p in zip(sids, gt, pred):
                 run_map.setdefault(sid, {"ground_truth": [], "predictions": []})
@@ -142,20 +155,21 @@ class MTLTrainer:
                     "predictions":  np.array(res["predictions"])
                 })
 
+        # 6) Package and save
         wrapper = MTLWrapper(
             results_by_subject  = results_by_subject,
             cluster_assignments = assignments,
             additional_info     = OmegaConf.to_container(self.train_cfg, resolve=True)
         )
         wrapper.save(self.wrapper_path)
-        logger.debug(f"[DEBUG] MTL wrapper saved to {self.wrapper_path}")
-
         state = convert_state_dict_keys(model.state_dict())
         torch.save(state, self.weights_path)
-        logger.debug(f"[DEBUG] MTL weights saved to {self.weights_path}")
-        
+
         self.model = model
         return wrapper
+
+    # ... rest of class unchanged (_set_seed, _build_model, _train, _evaluate, etc.) ...
+
 
 
     def _set_seed(self, seed: int):
