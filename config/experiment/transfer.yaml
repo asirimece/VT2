@@ -41,9 +41,9 @@ experiment:
         dropout: 0.5
 
     training:
-      n_runs: 3
+      n_runs: 2
       seed_start: 42
-      epochs: 100
+      epochs: 50
       batch_size: 64
       #learning_rate: [0.001, 0.005, 0.01]   
       learning_rate: [0.0001, 0.0001, 0.0001]
@@ -60,12 +60,13 @@ experiment:
     pretrained_mtl_model: dump/trained_models/mtl/mtl_weights.pth
     init_from_scratch: false 
     freeze_backbone: false
-    freeze_until_block: "conv_2"  # freeze up to this layer, or null/None for none
+    #freeze_until_block: "conv_2"  # freeze up to this layer, or null/None for none
+    freeze_until_layer: "conv_2"  # freeze up to this layer, or null/None for none
     backbone_lr: 0.00001          # Lower LR for backbone
     head_lr: 0.001                # Higher LR for head(s)
-    n_runs: 3
+    n_runs: 2
     seed_start: 42
-    epochs: 100
+    epochs: 50
     #lr: 0.001
     lr: 0.0001
     weight_decay: 0.001
@@ -77,7 +78,7 @@ experiment:
 
     # ← NEW flags to toggle augmentation in each phase
     phase1_aug: true    # raw-signal augment in MTL backbone training
-    phase2_aug: true    # mixup augment in TL fine-tuning
+    phase2_aug: false    # mixup augment in TL fine-tuning
 
     model:
       n_outputs: 3

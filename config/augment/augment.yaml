@@ -1,8 +1,6 @@
-# augment.yaml
 defaults:
   - _self_
 
-# conf/augment/augment.yaml
 augmentations:
   gaussian_noise:
     enabled: true
@@ -18,10 +16,3 @@ augmentations:
   mixup:
     enabled: false
     alpha: 0.2       # Beta(0.2,0.2) mixup
-
-# apply_in:
-#   phase1:      # options: phase1, phase2
-#     - gaussian_noise
-#     - time_warp
-#   phase2:
-#     - mixup

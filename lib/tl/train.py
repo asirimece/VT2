@@ -124,13 +124,16 @@ class TLTrainer:
         return X_train, y_train, X_test, y_test
 
     def _build_model(self, X_train: np.ndarray, subject_id: int):
-        n_chans, window = X_train.shape[1], X_train.shape[2]
+        # number of EEG channels × timepoints per epoch
+        n_chans = X_train.shape[1]
+        window  = X_train.shape[2]
         head_kwargs = {
             "hidden_dim": self.cfg.head_hidden_dim,
             "dropout":    self.cfg.head_dropout
         }
         model = TLModel(
-            n_chans=self.cfg.model.n_outputs,  # or X_train.shape[1]
+            #n_chans=self.cfg.model.n_outputs,  # or X_train.shape[1]
+            n_chans=n_chans,   
             n_outputs=self.cfg.model.n_outputs,
             n_clusters_pretrained=self.cfg.model.n_clusters_pretrained,
             window_samples=window,
@@ -186,8 +189,8 @@ class TLTrainer:
             for X, y in pbar:
                 # Phase2 mixup on raw windows
                 if self.do_mixup:
-                    X_np = X.numpy()
-                    y_np = y.numpy()
+                    X_np = X.detach().cpu().numpy()
+                    y_np = y.detach().cpu().numpy()
                     Xm, ya, yb, lam = mixup_batch(X_np, y_np, self.mixup_alpha)
                     X  = torch.from_numpy(Xm).to(self.device)
                     ya = torch.from_numpy(ya).long().to(self.device)

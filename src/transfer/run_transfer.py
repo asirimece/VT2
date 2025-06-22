@@ -23,12 +23,8 @@ def run(config: DictConfig) -> None:
      with open("./dump/preprocessed_data_custom.pkl", "rb") as f:
           preprocessed_data = pickle.load(f)
 
-     # 1) Load preprocessed epochs
-     with open(config.experiment.preprocessed_file, "rb") as f:
-          preprocessed_data = pickle.load(f)
-
      # 2) PHASE 1 AUGMENTATION (raw-signal)
-     if config.experiment.transfer.phase1_aug:
+     if config.experiment.experiment.transfer.phase1_aug:
           for subj, splits in preprocessed_data.items():
                # get NumPy array of shape (n_trials, n_ch, n_t)
                X = splits["train"].get_data()
@@ -38,14 +34,14 @@ def run(config: DictConfig) -> None:
                splits["train"]._data = X_aug
                # leave splits["test"] untouched
           
-     features = FeatureExtractor.run(config, preprocessed_data)
-     save_features(features, config.transform.output_file)
+     #features = FeatureExtractor.run(config, preprocessed_data)
+     #save_features(features, config.transform.output_file)
 
-     #with open("./dump/features.pkl", "rb") as f:
-          #features = pickle.load(f)
+     with open("./dump/features.pkl", "rb") as f:
+          features = pickle.load(f)
      
      # 4) PHASE 1: train your MTL backbone
-     trainer = MTLTrainer(config.experiment, config.model)
+     trainer = MTLTrainer(config, config.model)
      mtl_wrapper = trainer.run()
 
      evaluator = MTLEvaluator(mtl_wrapper, config)

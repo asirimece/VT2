@@ -8,4 +8,5 @@ defaults:
   - tracker: tracker
   - wandb: dev
   - _self_
+  
 seed: 1

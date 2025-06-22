@@ -31,27 +31,42 @@ class MTLWrapper:
 
 class MTLTrainer:
     def __init__(self,
-                 experiment_cfg: DictConfig | str = "config/experiment/transfer.yaml",
-                 model_cfg:      DictConfig | str = "config/model/deep4net.yaml"):
-        # Load configs
-        self.experiment_cfg = (OmegaConf.load(experiment_cfg)
-                               if isinstance(experiment_cfg, str)
-                               else experiment_cfg)
-        self.model_cfg      = (OmegaConf.load(model_cfg)
-                               if isinstance(model_cfg, str)
-                               else model_cfg)
+                 root_cfg:      DictConfig,
+                 model_cfg:     DictConfig | str = "config/model/deep4net.yaml"):
+        """
+        root_cfg: the full OmegaConf config (with dataset, augment, experiment, etc.)
+        model_cfg: path or DictConfig for the model-specific settings
+        """
+        # 1) Save the root config so we can pass it downstream if needed
+        self.root_cfg = root_cfg
 
-        exp = self.experiment_cfg.experiment
+        # 2) Experiment settings live under root_cfg.experiment.experiment
+        #    (first 'experiment' is the group name, second is the block in transfer.yaml)
+        self.experiment_cfg = root_cfg.experiment.experiment
+
+        # 3) Augmentation settings live under root_cfg.augment.augmentations
+        self.augment_cfg    = root_cfg.augment.augmentations
+
+        # 4) Load the model-specific config as before
+        self.model_cfg = (
+            OmegaConf.load(model_cfg) if isinstance(model_cfg, str)
+            else model_cfg
+        )
+
+        # 5) Unpack experiment sub-blocks
+        exp = self.experiment_cfg
         self.raw_fp       = exp.preprocessed_file
         self.features_fp  = exp.features_file
         self.cluster_cfg  = exp.clustering
         self.mtl_cfg      = exp.mtl
         self.train_cfg    = exp.mtl.training
 
+        # 6) Prepare output dirs
         os.makedirs(exp.mtl.mtl_model_output, exist_ok=True)
         self.wrapper_path = os.path.join(exp.mtl.mtl_model_output, "mtl_wrapper.pkl")
         self.weights_path = os.path.join(exp.mtl.mtl_model_output, "mtl_weights.pth")
 
+        # 7) Device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def run(self) -> MTLWrapper:
@@ -63,8 +78,8 @@ class MTLTrainer:
         X_tr, y_tr, sid_tr = [], [], []
         X_te, y_te, sid_te = [], [], []
 
-        do_aug = self.experiment_cfg.experiment.transfer.phase1_aug
-        aug_cfg = self.experiment_cfg.augment.augmentations
+        do_aug = self.experiment_cfg.transfer.phase1_aug
+        aug_cfg = self.augment_cfg
 
         for subj_id, splits in raw_dict.items():
             # ----- TRAIN SPLIT -----
@@ -107,7 +122,7 @@ class MTLTrainer:
                        for sid in cluster_wrapper.subject_ids}
 
         # Optionally restrict to a single cluster (if configured)
-        exp = self.experiment_cfg.experiment
+        exp = self.experiment_cfg
         if getattr(exp, "restrict_to_cluster", False):
             if exp.cluster_id is None:
                 raise ValueError("cluster_id must be set when restrict_to_cluster is True")
