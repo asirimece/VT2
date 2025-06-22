@@ -80,13 +80,24 @@ class MTLTrainer:
 
         do_aug = self.experiment_cfg.transfer.phase1_aug
         aug_cfg = self.augment_cfg
+        
+        # Determine which augmentations are enabled
+        enabled_augs = [name for name, c in aug_cfg.items() if c.get("enabled", False)]
+        if do_aug:
+            logger.info(f"[MTLTrainer] Phase1 augmentation ENABLED. Techniques: {enabled_augs}")
+        else:
+            logger.info("[MTLTrainer] Phase1 augmentation DISABLED.")
 
         for subj_id, splits in raw_dict.items():
             # ----- TRAIN SPLIT -----
             ep_tr = splits['train']
             X = ep_tr.get_data()           # shape (n_trials, n_ch, n_times)
+            
             if do_aug:
+                logger.debug(f"[MTLTrainer] Subject {subj_id}: before aug, epoch0 std = {X[0].std():.4f}")
                 X = apply_raw_augmentations(X, aug_cfg)
+                logger.debug(f"[MTLTrainer] Subject {subj_id}: after aug,  epoch0 std = {X[0].std():.4f}")
+
             y = ep_tr.events[:, 2]         # labels
             X_tr.append(X)
             y_tr.append(y)

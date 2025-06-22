@@ -182,19 +182,27 @@ class TLTrainer:
         return train_loader, test_loader
 
     def _train(self, train_loader, subject_id: int):
+        if self.do_mixup:
+            logger.info(f"[TLTrainer] Phase2 augmentation ENABLED: mixup_batch (α={self.mixup_alpha})")
+        else:
+            logger.info("[TLTrainer] Phase2 augmentation DISABLED.")
+
         self.model.train()
         for epoch in range(1, self.cfg.epochs + 1):
             total_loss, correct, count = 0, 0, 0
             pbar = tqdm(train_loader, desc=f"Epoch {epoch}/{self.cfg.epochs}", leave=False)
-            for X, y in pbar:
+            for batch_idx, (X, y) in enumerate(pbar):
                 # Phase2 mixup on raw windows
                 if self.do_mixup:
+                    # Debug: before/after one sample
+                    logger.debug(f"[TLTrainer] Batch {batch_idx}: before mixup, X[0].std={X[0].std():.4f}")
                     X_np = X.detach().cpu().numpy()
                     y_np = y.detach().cpu().numpy()
                     Xm, ya, yb, lam = mixup_batch(X_np, y_np, self.mixup_alpha)
                     X  = torch.from_numpy(Xm).to(self.device)
                     ya = torch.from_numpy(ya).long().to(self.device)
                     yb = torch.from_numpy(yb).long().to(self.device)
+                    logger.debug(f"[TLTrainer] Batch {batch_idx}: after mixup (λ={lam:.3f}), X[0].std={X[0].std():.4f}")
                 else:
                     X, y = X.to(self.device), y.to(self.device)
 
