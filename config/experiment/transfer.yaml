@@ -60,7 +60,7 @@ experiment:
     pretrained_mtl_model: dump/trained_models/mtl/mtl_weights.pth
     init_from_scratch: false 
     freeze_backbone: false
-    freeze_until_block: "conv_2"  # freeze up to this layer, or null/None for none
+    freeze_until_layer: "None"  # freeze up to this layer, or null/None for none
     backbone_lr: 0.00001          # Lower LR for backbone
     head_lr: 0.001                # Higher LR for head(s)
     n_runs: 3
