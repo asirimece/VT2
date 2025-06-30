@@ -4,13 +4,14 @@ import pickle
 import torch
 import numpy as np
 from tqdm.auto import tqdm
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, ConcatDataset
 from torch import nn
 from omegaconf import DictConfig
 from collections import defaultdict
 from lib.dataset.dataset import TLSubjectDataset
 from lib.tl.model import TLModel
 from lib.tl.evaluate import TLEvaluator
+from lib.tl.recorder import make_tl_init_args, save_for_recorder
 from lib.utils.utils import _prefix_mtl_keys
 from lib.logging import logger
 
@@ -50,13 +51,25 @@ class TLWrapper:
 
 class TLTrainer:
     def __init__(self, config: DictConfig):
-        self.config = config.experiment.experiment.transfer
-        self.device = torch.device(self.config.device)
-        self.preprocessed_data_path = config.experiment.experiment.preprocessed_file
-        self._pretrained_weights = None
-        self.model = None
-        self.optimizer = None
+        tcfg = config.experiment.experiment.transfer
+        self.config          = tcfg
+        self.device          = torch.device(tcfg.device)
+        self.preproc_fp      = config.experiment.experiment.preprocessed_file
+        self.mtl_weights_fp  = tcfg.pretrained_mtl_model
+        self.mtl_wrapper_fp  = tcfg.pretrained_mtl_wrapper
+        self.cluster_model_fp= tcfg.pretrained_cluster_model
+        self.tl_output_dir   = tcfg.tl_model_output
+        os.makedirs(self.tl_output_dir, exist_ok=True)
+
+        # loss
         self.criterion = nn.CrossEntropyLoss()
+
+        # load MTL init‐weights
+        if not tcfg.init_from_scratch:
+            state = torch.load(self.mtl_weights_fp, map_location=self.device)
+            self.init_state = _prefix_mtl_keys(state)
+        else:
+            self.init_state = None
 
     def _set_seed(self, seed: int):
         import random
@@ -67,155 +80,181 @@ class TLTrainer:
             torch.cuda.manual_seed_all(seed)
 
     def run(self):
-        with open(self.preprocessed_data_path, "rb") as f:
-            preprocessed_data = pickle.load(f)
+        # 1) Load all data and clustering info
+        with open(self.preproc_fp, "rb") as f:
+            preproc = pickle.load(f)  # dict: subj -> {"train", "test"}
+        mtl_wrapper = pickle.load(open(self.mtl_wrapper_fp, "rb"))
+        assignments = mtl_wrapper.cluster_assignments       # subj -> cluster_id
+        n_clusters  = max(assignments.values()) + 1
 
-        subject_ids = sorted(preprocessed_data.keys())
+        # Build per‐subject datasets
+        train_ds = {}
+        test_ds  = {}
+        for sid, splits in preproc.items():
+            Xtr = splits["train"].get_data()
+            ytr = splits["train"].events[:, -1]
+            train_ds[sid] = TLSubjectDataset(Xtr, ytr)
+
+            Xte = splits["test"].get_data()
+            yte = splits["test"].events[:, -1]
+            test_ds[sid]  = TLSubjectDataset(Xte, yte)
+
+        # Figure out shapes
+        example = next(iter(train_ds.values()))
+        n_chans, window_samples = example.X.shape[1], example.X.shape[2]
+
+        # Prepare results container
         all_results = defaultdict(list)
 
-        if not self.config.init_from_scratch:
-            self._pretrained_weights = _prefix_mtl_keys(
-                torch.load(self.config.pretrained_mtl_model, map_location=self.device)
-            )
+        # --- 2) Train pooled model ---
+        logger.info("=== Training pooled TL model ===")
+        self._set_seed(self.config.seed_start)
 
-        for run_idx in range(self.config.n_runs):
-            seed = self.config.seed_start + run_idx
-            self._set_seed(seed)
+        pooled_loader = DataLoader(
+            ConcatDataset(list(train_ds.values())),
+            batch_size=self.config.batch_size,
+            shuffle=True
+        )
 
-            out_dir = os.path.join(self.config.tl_model_output, f"run_{run_idx}")
-            os.makedirs(out_dir, exist_ok=True)
-
-            for i, subject_id in enumerate(subject_ids):
-                weights_path = os.path.join(out_dir, f"tl_{subject_id}_model.pth")
-                results_path = os.path.join(out_dir, f"tl_{subject_id}_results.pkl")
-
-                X_train, y_train, X_test, y_test = self._load_subject_data(preprocessed_data, subject_id)
-                self.model = self._build_model(X_train, subject_id)
-                self.optimizer = self._build_optimizer()
-
-                train_loader, test_loader = self._build_dataloaders(X_train, y_train, X_test, y_test)
-                self._train(train_loader, subject_id)
-                wrapper = self._evaluate(test_loader, subject_id)
-
-                wrapper.save(results_path)
-                torch.save(self.model.state_dict(), weights_path)
-
-                all_results[subject_id].append(wrapper)
-
-        return all_results
-    
-    def _load_subject_data(self, preprocessed_data, subject_id: int):
-        if subject_id not in preprocessed_data:
-            raise ValueError(f"Subject '{subject_id}' not found in preprocessed data.")
-        
-        subj_data = preprocessed_data[subject_id]
-        #train_ep = subj_data["0train"]
-        train_ep = subj_data["train"]
-        #test_ep = subj_data["1test"]
-        test_ep = subj_data["test"]
-        
-        X_train, y_train = train_ep.get_data(), train_ep.events[:, -1]
-        X_test, y_test = test_ep.get_data(), test_ep.events[:, -1]
-
-        return X_train, y_train, X_test, y_test 
-    
-    def _build_model(self, X_train, subject_id: int):
-        n_chans = X_train.shape[1]
-        window_samples = X_train.shape[2]
-        
-        head_kwargs = {
-            "hidden_dim": self.config.get("head_hidden_dim", 128),
-            "dropout": self.config.get("head_dropout", 0.5)
-        }
-        model = TLModel(
+        pooled_model = TLModel(
             n_chans=n_chans,
             n_outputs=self.config.model.n_outputs,
             n_clusters_pretrained=self.config.model.n_clusters_pretrained,
             window_samples=window_samples,
-            head_kwargs=head_kwargs
-        )
+            head_kwargs={
+                "hidden_dim": self.config.head_hidden_dim,
+                "dropout":    self.config.head_dropout
+            }
+        ).to(self.device)
 
-        # Load pretrained weights if available
-        if self._pretrained_weights is not None:
-            model.load_state_dict(self._pretrained_weights)
-            logger.info("Loaded pretrained MTL weights into TL model.")
-        else:
-            logger.info("Training TL model from scratch.")
+        # load MTL backbone weights
+        if self.init_state is not None:
+            pooled_model.load_state_dict(self.init_state, strict=False)
+            logger.info("Initialized pooled model from MTL weights")
 
-        # Partial backbone freeze (up to freeze_until_block, inclusive)
-        freeze_until = getattr(self.config, "freeze_until_layer", None)
-        if freeze_until is not None:
-            freeze_backbone_layers(model.shared_backbone, freeze_until_layer=freeze_until)
-            logger.info(f"Froze backbone up to {freeze_until}")
-        elif getattr(self.config, "freeze_backbone", False):
-            for param in model.shared_backbone.parameters():
-                param.requires_grad = False
-            logger.info("Backbone frozen.")
+        # create the 'subj_0' head for pooled
+        pooled_model.add_new_head(0)
 
-
-        # Add subject-specific head if needed
-        feature_dim = self.config.get("feature_dim", None)
-        model.add_new_head(subject_id, feature_dim=feature_dim)
-        return model.to(self.device)
-
-    def _build_optimizer(self):
-        # Collect backbone and head params for differential LR
-        backbone_params = []
-        head_params = []
-        for name, param in self.model.named_parameters():
-            if not param.requires_grad:
-                continue
-            if 'shared_backbone' in name:
-                backbone_params.append(param)
-            else:
-                head_params.append(param)
-        backbone_lr = getattr(self.config, "backbone_lr", self.config.lr)
-        head_lr = getattr(self.config, "head_lr", self.config.lr)
-        return torch.optim.Adam([
-            {"params": backbone_params, "lr": backbone_lr, "weight_decay": self.config.weight_decay},
-            {"params": head_params,     "lr": head_lr,     "weight_decay": 0.0}
+        optimizer = torch.optim.Adam([
+            {"params":[p for n,p in pooled_model.named_parameters() if "shared_backbone" in n],
+             "lr": self.config.backbone_lr, "weight_decay": self.config.weight_decay},
+            {"params":[p for n,p in pooled_model.named_parameters() if "shared_backbone" not in n],
+             "lr": self.config.head_lr,     "weight_decay": 0.0},
         ])
 
-    def _build_dataloaders(self, X_train, y_train, X_test, y_test):
-        train_ds = TLSubjectDataset(X_train, y_train)
-        test_ds = TLSubjectDataset(X_test, y_test)
+        self._train(pooled_model, pooled_loader, optimizer, head_id=0)
 
-        train_loader = DataLoader(train_ds, batch_size=self.config.batch_size, shuffle=True)
-        test_loader = DataLoader(test_ds, batch_size=self.config.batch_size, shuffle=False)
-        return train_loader, test_loader
+        # save
+        pooled_fp = os.path.join(self.tl_output_dir, "pooled_model.pth")
+        torch.save(pooled_model.state_dict(), pooled_fp)
+        
+        init_args = make_tl_init_args(self.config, n_chans, window_samples)
+        save_for_recorder(
+            model      = pooled_model,
+            init_args  = init_args,
+            pth_path   = os.path.join(self.tl_output_dir, "pooled_model.pth"),
+            device     = self.config.device
+        )
+        logger.info(f"Saved pooled model to {pooled_fp}")
 
-    def _train(self, train_loader, subject_id: int):
-        self.model.train()
+        # evaluate per‐subject
+        for sid in test_ds:
+            wrapper = self._evaluate_model_on_subject(pooled_model, test_ds[sid], subject_id=0)
+            all_results[sid].append(wrapper)
+
+        # --- 3) Train cluster‐specific models ---
+        logger.info(f"=== Training {n_clusters} cluster‐specific models ===")
+        for cid in range(n_clusters):
+            members = [s for s,c in assignments.items() if c==cid]
+            if not members:
+                logger.warning(f"No subjects in cluster {cid}, skipping")
+                continue
+
+            self._set_seed(self.config.seed_start + cid)
+            loader = DataLoader(
+                ConcatDataset([train_ds[s] for s in members]),
+                batch_size=self.config.batch_size,
+                shuffle=True
+            )
+
+            model = TLModel(
+                n_chans=n_chans,
+                n_outputs=self.config.model.n_outputs,
+                n_clusters_pretrained=self.config.model.n_clusters_pretrained,
+                window_samples=window_samples,
+                head_kwargs={
+                    "hidden_dim": self.config.head_hidden_dim,
+                    "dropout":    self.config.head_dropout
+                }
+            ).to(self.device)
+
+            if self.init_state is not None:
+                model.load_state_dict(self.init_state, strict=False)
+
+            # add head for this cluster
+            model.add_new_head(cid)
+
+            optimizer = torch.optim.Adam([
+                {"params":[p for n,p in model.named_parameters() if "shared_backbone" in n],
+                 "lr": self.config.backbone_lr, "weight_decay": self.config.weight_decay},
+                {"params":[p for n,p in model.named_parameters() if "shared_backbone" not in n],
+                 "lr": self.config.head_lr,     "weight_decay": 0.0},
+            ])
+
+            self._train(model, loader, optimizer, head_id=cid)
+
+            out_fp = os.path.join(self.tl_output_dir, f"base_model_cluster{cid}.pth")
+            torch.save(model.state_dict(), out_fp)
+            init_args = make_tl_init_args(self.config, n_chans, window_samples)
+            save_for_recorder(
+                model      = model,
+                init_args  = init_args,
+                pth_path   = os.path.join(self.tl_output_dir, f"base_model_cluster{cid}.pth"),
+                device     = self.config.device
+            )
+            logger.info(f"Saved cluster {cid} model to {out_fp}")
+
+            # evaluate on each member
+            for sid in members:
+                wrapper = self._evaluate_model_on_subject(model, test_ds[sid], subject_id=cid)
+                all_results[sid].append(wrapper)
+
+        logger.info("=== TLTrainer complete ===")
+        return all_results
+
+
+    def _train(self, model, loader, optimizer, head_id: int):
+        """Train `model` on `loader`, always routing through `subj_{head_id}`."""
+        model.train()
         for epoch in range(1, self.config.epochs + 1):
-            total_loss, correct, count = 0.0, 0, 0
-            pbar = tqdm(train_loader, desc=f"Epoch {epoch}/{self.config.epochs}", leave=False)
-            for X, y in pbar:
+            total, correct = 0, 0
+            for X, y in tqdm(loader, desc=f"Epoch {epoch}/{self.config.epochs}", leave=False):
                 X, y = X.to(self.device), y.to(self.device)
-                self.optimizer.zero_grad()
-                outputs = self.model(X, [subject_id] * X.size(0))
-                loss = self.criterion(outputs, y)
+                optimizer.zero_grad()
+                preds = model(X, [head_id]*X.size(0))
+                loss  = self.criterion(preds, y)
                 loss.backward()
-                self.optimizer.step()
+                optimizer.step()
 
-                preds = outputs.argmax(dim=1)
-                correct += (preds == y).sum().item()
-                count += y.size(0)
-                total_loss += loss.item() * y.size(0)
-                pbar.set_postfix(loss=f"{total_loss/count:.4f}", acc=f"{correct/count:.4f}")
-            
-            print(f"[TLTrainer] Epoch {epoch}: Loss={total_loss/count:.4f}, Acc={correct/count:.4f}")
+                p = preds.argmax(dim=1)
+                correct += (p == y).sum().item()
+                total   += y.size(0)
+            logger.info(f"[TLTrainer] Epoch {epoch}: acc={correct/total:.4f}")
 
-    def _evaluate(self, test_loader: torch.utils.data.DataLoader, subject_id: int):
-        self.model.eval()
+
+    def _evaluate_model_on_subject(self, model, dataset: TLSubjectDataset, subject_id: int):
+        """Run model on one subject’s test set, return a TLWrapper."""
+        loader = DataLoader(dataset, batch_size=self.config.batch_size, shuffle=False)
+        model.eval()
         all_preds, all_labels = [], []
         with torch.no_grad():
-            for X, y in test_loader:
+            for X,y in loader:
                 X = X.to(self.device)
-                outputs = self.model(X, [subject_id] * X.size(0))
-                preds = outputs.argmax(dim=1).cpu().numpy()
+                out = model(X, [subject_id]*X.size(0))
+                preds = out.argmax(dim=1).cpu().numpy()
                 all_preds.extend(preds)
                 all_labels.extend(y.numpy())
         return TLWrapper(
-            ground_truth=np.array(all_labels, dtype=int),
-            predictions=np.array(all_preds, dtype=int)
+            ground_truth = np.array(all_labels, dtype=int),
+            predictions  = np.array(all_preds, dtype=int)
         )

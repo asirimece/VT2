@@ -3,6 +3,7 @@ import random
 import pickle
 import numpy as np
 import torch
+import joblib
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from omegaconf import OmegaConf, DictConfig
@@ -47,8 +48,9 @@ class MTLTrainer:
         self.train_cfg = exp.mtl.training
 
         os.makedirs(exp.mtl.mtl_model_output, exist_ok=True)
-        self.wrapper_path = os.path.join(exp.mtl.mtl_model_output, "mtl_wrapper.pkl")
-        self.weights_path = os.path.join(exp.mtl.mtl_model_output, "mtl_weights.pth")
+        self.wrapper_path       = os.path.join(exp.mtl.mtl_model_output, "mtl_wrapper.pkl")
+        self.weights_path       = os.path.join(exp.mtl.mtl_model_output, "mtl_weights.pth")
+        self.cluster_model_fp   = os.path.join(exp.mtl.mtl_model_output, "cluster_model.joblib")
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -88,6 +90,20 @@ class MTLTrainer:
             method=self.cluster_cfg.method
         )
         n_clusters = cluster_wrapper.get_num_clusters()
+        
+         # **Dump the actual sklearn estimator** inside the wrapper
+        # Try common attribute names
+        for attr in ('cluster_model','clusterer','model','estimator','kmeans'):
+            estimator = getattr(cluster_wrapper, attr, None)
+            if estimator is not None:
+                joblib.dump(estimator, self.cluster_model_fp)
+                logger.info(f"Saved clustering estimator via '{attr}' to {self.cluster_model_fp}")
+                break
+        else:
+            raise RuntimeError(
+                "Could not find the sklearn estimator in cluster_wrapper; "
+                f"available attrs: {dir(cluster_wrapper)}"
+            )
 
         # Build a subject-cluster dict
         assignments = {sid: cluster_wrapper.labels[sid]
