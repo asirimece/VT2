@@ -1,5 +1,0 @@
-name: 'tracker'
-
-trackers:
-  - ${tracker.experiment_tracker}
-  - ${tracker.run_tracker}

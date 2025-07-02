@@ -1,221 +1,209 @@
-import hashlib
-import os
-import pickle
-import torch
-import numpy as np
+import types
+import os, pickle, torch, numpy as np
 from tqdm.auto import tqdm
-from torch.utils.data import DataLoader
 from torch import nn
+from torch.utils.data import DataLoader
+from torch.optim.swa_utils import AveragedModel, SWALR, update_bn
 from omegaconf import DictConfig
 from collections import defaultdict
 from lib.dataset.dataset import TLSubjectDataset
 from lib.tl.model import TLModel
-from lib.tl.evaluate import TLEvaluator
 from lib.utils.utils import _prefix_mtl_keys
 from lib.logging import logger
 
 logger = logger.get()
 
-
-# Helper to freeze backbone up to given conv block index
 def freeze_backbone_layers(backbone, freeze_until_layer=None):
-    """
-    Freezes all backbone layers up to (and including) freeze_until_layer.
-    If freeze_until_layer is None, freezes the entire backbone.
-    """
     found = False
     for name, module in backbone.named_children():
         for param in module.parameters():
             param.requires_grad = False
-        if freeze_until_layer is not None and name == freeze_until_layer:
+        if freeze_until_layer and name == freeze_until_layer:
             found = True
             break
     if freeze_until_layer and not found:
-        raise ValueError(f"Layer {freeze_until_layer} not found in backbone (got: {[n for n, _ in backbone.named_children()]})")
-    
+        raise ValueError(f"Layer {freeze_until_layer} not found.")
+
 class TLWrapper:
     def __init__(self, ground_truth, predictions):
         self.ground_truth = ground_truth
         self.predictions = predictions
-
     def save(self, path):
         with open(path, "wb") as f:
             pickle.dump(self, f)
 
-    @staticmethod
-    def load(path):
-        with open(path, "rb") as f:
-            return pickle.load(f)
-
-
 class TLTrainer:
     def __init__(self, config: DictConfig):
-        self.config = config.experiment.experiment.transfer
-        self.device = torch.device(self.config.device)
+        self.cfg = config.experiment.experiment.transfer
+        self.device = torch.device(self.cfg.device)
         self.preprocessed_data_path = config.experiment.experiment.preprocessed_file
-        self._pretrained_weights = None
-        self.model = None
-        self.optimizer = None
         self.criterion = nn.CrossEntropyLoss()
-
-    def _set_seed(self, seed: int):
-        import random
-        torch.manual_seed(seed)
-        np.random.seed(seed)
-        random.seed(seed)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(seed)
-
-    def run(self):
-        with open(self.preprocessed_data_path, "rb") as f:
-            preprocessed_data = pickle.load(f)
-
-        subject_ids = sorted(preprocessed_data.keys())
-        all_results = defaultdict(list)
-
-        if not self.config.init_from_scratch:
-            self._pretrained_weights = _prefix_mtl_keys(
-                torch.load(self.config.pretrained_mtl_model, map_location=self.device)
+        self._pretrained = None
+        if not self.cfg.init_from_scratch and self.cfg.pretrained_mtl_model:
+            self._pretrained = _prefix_mtl_keys(
+                torch.load(self.cfg.pretrained_mtl_model, map_location=self.device)
             )
 
-        for run_idx in range(self.config.n_runs):
-            seed = self.config.seed_start + run_idx
-            self._set_seed(seed)
+    def _set_seed(self, seed):
+        import random
+        torch.manual_seed(seed); np.random.seed(seed); random.seed(seed)
+        if torch.cuda.is_available(): torch.cuda.manual_seed_all(seed)
 
-            out_dir = os.path.join(self.config.tl_model_output, f"run_{run_idx}")
-            os.makedirs(out_dir, exist_ok=True)
+    def run(self):
+        # load data
+        with open(self.preprocessed_data_path, "rb") as f:
+            data = pickle.load(f)
+        subs = sorted(data.keys())
+        all_results = defaultdict(list)
 
-            for i, subject_id in enumerate(subject_ids):
-                weights_path = os.path.join(out_dir, f"tl_{subject_id}_model.pth")
-                results_path = os.path.join(out_dir, f"tl_{subject_id}_results.pkl")
+        strategy = self.cfg.save_strategy.lower()
+        best_acc = -float("inf")
+        best_state = None
+        swa_model = swa_sched = None
 
-                X_train, y_train, X_test, y_test = self._load_subject_data(preprocessed_data, subject_id)
-                self.model = self._build_model(X_train, subject_id)
+        for run_i in range(self.cfg.n_runs):
+            self._set_seed(self.cfg.seed_start + run_i)
+
+            for sub in subs:
+                Xtr, ytr, Xte, yte = self._load_data(data, sub)
+                self._build_model(Xtr, sub)
                 self.optimizer = self._build_optimizer()
 
-                train_loader, test_loader = self._build_dataloaders(X_train, y_train, X_test, y_test)
-                self._train(train_loader, subject_id)
-                wrapper = self._evaluate(test_loader, subject_id)
+                # init SWA once
+                if strategy == "swa" and swa_model is None:
+                    swa_model = AveragedModel(self.model)
+                    swa_sched = SWALR(self.optimizer, swa_lr=self.cfg.swa_lr)
 
-                wrapper.save(results_path)
-                torch.save(self.model.state_dict(), weights_path)
+                tr_ld, te_ld = self._build_dataloaders(Xtr, ytr, Xte, yte)
 
-                all_results[subject_id].append(wrapper)
+                # train with optional SWA hooks
+                self._train(
+                    tr_ld, sub,
+                    strategy=strategy,
+                    swa_model=swa_model,
+                    swa_sched=swa_sched,
+                    swa_start=self.cfg.swa_start
+                )
+
+                wrap = self._evaluate(te_ld, sub)
+                all_results[sub].append(wrap)
+
+                # best-run tracking
+                acc = (wrap.predictions == wrap.ground_truth).mean()
+                if strategy == "best_run" and acc > best_acc:
+                    best_acc   = acc
+                    best_state = self.model.state_dict().copy()
+
+        # save single pooled model
+        os.makedirs(self.cfg.tl_model_output, exist_ok=True)
+        outp = os.path.join(self.cfg.tl_model_output, "tl_pooled_model.pth")
+
+        if strategy == "swa":
+            # 1) Choose a valid subject ID to replay during BN statistics update
+            first_sub = subs[0]  # any subject in your list works, since BN lives in the shared backbone
+
+            # 2) Grab the original bound forward method
+            orig_forward = swa_model.module.forward
+
+            # 3) Define a new forward that accepts (self, x) and injects our fake subject_ids list
+            def swa_forward_single(self, x):
+                # self is the TLModel instance, x is the input tensor
+                batch_size = x.size(0)
+                return orig_forward(x, [first_sub] * batch_size)
+
+            # 4) Rebind it as the module’s forward
+            swa_model.module.forward = types.MethodType(swa_forward_single, swa_model.module)
+
+            # 5) Recalculate BatchNorm stats over your training loader
+            update_bn(tr_ld, swa_model)
+
+            # 6) Save the SWA‐averaged weights
+            torch.save(swa_model.module.state_dict(), outp)
+            print(f"[TLTrainer] Saved SWA model → {outp}")
+        else:
+            # Best‐run strategy: simply save the highest‐accuracy snapshot
+            torch.save(best_state, outp)
+            print(f"[TLTrainer] Saved best‐run model acc={best_acc:.3f} → {outp}")
 
         return all_results
-    
-    def _load_subject_data(self, preprocessed_data, subject_id: int):
-        if subject_id not in preprocessed_data:
-            raise ValueError(f"Subject '{subject_id}' not found in preprocessed data.")
-        
-        subj_data = preprocessed_data[subject_id]
-        #train_ep = subj_data["0train"]
-        train_ep = subj_data["train"]
-        #test_ep = subj_data["1test"]
-        test_ep = subj_data["test"]
-        
-        X_train, y_train = train_ep.get_data(), train_ep.events[:, -1]
-        X_test, y_test = test_ep.get_data(), test_ep.events[:, -1]
 
-        return X_train, y_train, X_test, y_test 
-    
-    def _build_model(self, X_train, subject_id: int):
-        n_chans = X_train.shape[1]
-        window_samples = X_train.shape[2]
-        
-        head_kwargs = {
-            "hidden_dim": self.config.get("head_hidden_dim", 128),
-            "dropout": self.config.get("head_dropout", 0.5)
-        }
-        model = TLModel(
-            n_chans=n_chans,
-            n_outputs=self.config.model.n_outputs,
-            n_clusters_pretrained=self.config.model.n_clusters_pretrained,
-            window_samples=window_samples,
-            head_kwargs=head_kwargs
-        )
-
-        # Load pretrained weights if available
-        if self._pretrained_weights is not None:
-            model.load_state_dict(self._pretrained_weights)
-            logger.info("Loaded pretrained MTL weights into TL model.")
-        else:
-            logger.info("Training TL model from scratch.")
-
-        # Partial backbone freeze (up to freeze_until_block, inclusive)
-        freeze_until = getattr(self.config, "freeze_until_layer", None)
-        if freeze_until is not None:
-            freeze_backbone_layers(model.shared_backbone, freeze_until_layer=freeze_until)
-            logger.info(f"Froze backbone up to {freeze_until}")
-        elif getattr(self.config, "freeze_backbone", False):
-            for param in model.shared_backbone.parameters():
-                param.requires_grad = False
-            logger.info("Backbone frozen.")
-
-
-        # Add subject-specific head if needed
-        feature_dim = self.config.get("feature_dim", None)
-        model.add_new_head(subject_id, feature_dim=feature_dim)
-        return model.to(self.device)
-
-    def _build_optimizer(self):
-        # Collect backbone and head params for differential LR
-        backbone_params = []
-        head_params = []
-        for name, param in self.model.named_parameters():
-            if not param.requires_grad:
-                continue
-            if 'shared_backbone' in name:
-                backbone_params.append(param)
-            else:
-                head_params.append(param)
-        backbone_lr = getattr(self.config, "backbone_lr", self.config.lr)
-        head_lr = getattr(self.config, "head_lr", self.config.lr)
-        return torch.optim.Adam([
-            {"params": backbone_params, "lr": backbone_lr, "weight_decay": self.config.weight_decay},
-            {"params": head_params,     "lr": head_lr,     "weight_decay": 0.0}
-        ])
-
-    def _build_dataloaders(self, X_train, y_train, X_test, y_test):
-        train_ds = TLSubjectDataset(X_train, y_train)
-        test_ds = TLSubjectDataset(X_test, y_test)
-
-        train_loader = DataLoader(train_ds, batch_size=self.config.batch_size, shuffle=True)
-        test_loader = DataLoader(test_ds, batch_size=self.config.batch_size, shuffle=False)
-        return train_loader, test_loader
-
-    def _train(self, train_loader, subject_id: int):
+    def _train(self, loader, subject_id,
+               strategy="best_run",
+               swa_model=None, swa_sched=None, swa_start=1):
+        """Exactly your original loop, plus SWA updates if requested."""
         self.model.train()
-        for epoch in range(1, self.config.epochs + 1):
-            total_loss, correct, count = 0.0, 0, 0
-            pbar = tqdm(train_loader, desc=f"Epoch {epoch}/{self.config.epochs}", leave=False)
+        for epoch in range(1, self.cfg.epochs + 1):
+            tot, corr, cnt = 0.0, 0, 0
+            pbar = tqdm(loader, desc=f"Epoch {epoch}/{self.cfg.epochs}", leave=False)
             for X, y in pbar:
                 X, y = X.to(self.device), y.to(self.device)
                 self.optimizer.zero_grad()
-                outputs = self.model(X, [subject_id] * X.size(0))
-                loss = self.criterion(outputs, y)
+                out = self.model(X, [subject_id]*X.size(0))
+                loss = self.criterion(out, y)
                 loss.backward()
                 self.optimizer.step()
+                preds = out.argmax(dim=1)
+                corr += (preds == y).sum().item()
+                cnt  += y.size(0)
+                tot  += loss.item() * y.size(0)
+                pbar.set_postfix(loss=tot/cnt, acc=corr/cnt)
+            print(f"[TLTrainer] Epoch {epoch}: Loss={tot/cnt:.4f}, Acc={corr/cnt:.4f}")
 
-                preds = outputs.argmax(dim=1)
-                correct += (preds == y).sum().item()
-                count += y.size(0)
-                total_loss += loss.item() * y.size(0)
-                pbar.set_postfix(loss=f"{total_loss/count:.4f}", acc=f"{correct/count:.4f}")
-            
-            print(f"[TLTrainer] Epoch {epoch}: Loss={total_loss/count:.4f}, Acc={correct/count:.4f}")
+            # SWA hook
+            if strategy == "swa" and epoch >= swa_start:
+                swa_model.update_parameters(self.model)
+                swa_sched.step()
 
-    def _evaluate(self, test_loader: torch.utils.data.DataLoader, subject_id: int):
-        self.model.eval()
-        all_preds, all_labels = [], []
-        with torch.no_grad():
-            for X, y in test_loader:
-                X = X.to(self.device)
-                outputs = self.model(X, [subject_id] * X.size(0))
-                preds = outputs.argmax(dim=1).cpu().numpy()
-                all_preds.extend(preds)
-                all_labels.extend(y.numpy())
-        return TLWrapper(
-            ground_truth=np.array(all_labels, dtype=int),
-            predictions=np.array(all_preds, dtype=int)
+    def _load_data(self, data, sub):
+        tr, te = data[sub]["train"], data[sub]["test"]
+        return tr.get_data(), tr.events[:,-1], te.get_data(), te.events[:,-1]
+
+    def _build_model(self, X, sub):
+        n_ch, win = X.shape[1], X.shape[2]
+        
+        head_kw = {
+            "hidden_dim": self.cfg.head_hidden_dim,
+            "dropout":    self.cfg.head_dropout
+        }
+        
+        m = TLModel(
+            n_chans=n_ch,
+            n_outputs=self.cfg.model.n_outputs,
+            n_clusters_pretrained=self.cfg.model.n_clusters_pretrained,
+            window_samples=win,
+            head_kwargs=head_kw
         )
+        if self._pretrained:
+            m.load_state_dict(self._pretrained)
+        if self.cfg.freeze_backbone or self.cfg.freeze_until_layer:
+            freeze_backbone_layers(m.shared_backbone, self.cfg.freeze_until_layer)
+        m.add_new_head(sub)
+        self.model = m.to(self.device)
+
+    def _build_optimizer(self):
+        b, h = [], []
+        for n, p in self.model.named_parameters():
+            if not p.requires_grad: continue
+            (b if "shared_backbone" in n else h).append(p)
+        return torch.optim.Adam([
+            {"params": b, "lr": self.cfg.backbone_lr, "weight_decay": self.cfg.weight_decay},
+            {"params": h, "lr": self.cfg.head_lr,     "weight_decay": 0.0}
+        ])
+
+    def _build_dataloaders(self, Xtr, ytr, Xte, yte):
+        return (
+            DataLoader(TLSubjectDataset(Xtr,ytr), batch_size=self.cfg.batch_size, shuffle=True),
+            DataLoader(TLSubjectDataset(Xte,yte), batch_size=self.cfg.batch_size, shuffle=False)
+        )
+
+    def _evaluate(self, loader, sub):
+        self.model.eval()
+        ps, ls = [], []
+        with torch.no_grad():
+            for X, y in loader:
+                X = X.to(self.device)
+                out = self.model(X, [sub]*X.size(0))
+                p = out.argmax(dim=1).cpu().numpy()
+                ps.extend(p); ls.extend(y.numpy())
+        return TLWrapper(ground_truth=np.array(ls), predictions=np.array(ps))
+

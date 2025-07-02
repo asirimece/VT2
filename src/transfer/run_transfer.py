@@ -38,3 +38,4 @@ def run(config: DictConfig) -> None:
    
    evaluator = TLEvaluator(tl_wrapper, config)
    evaluator.evaluate()
+   
