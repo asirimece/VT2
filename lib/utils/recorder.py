@@ -1,5 +1,5 @@
 """
-Usage: python lib/utils/recorder.py   ./dump/trained_models/tl/run_0    --pattern "tl_pooled_model.pth"   --device cpu   --n_chans 8   --n_outputs 3   --n_clusters_pretrained 1   --window_samples 600
+Usage: python lib/utils/recorder.py   ./dump/trained_models/tl/    --pattern "universal_autostop.pth"   --device cpu   --n_chans 8   --n_outputs 3   --n_clusters_pretrained 1   --window_samples 600
 
 Scan a directory of .pth TL models (pooled or cluster-specific),
 wrap each in a tiny sklearn Pipeline (with optional metadata for clusters),
