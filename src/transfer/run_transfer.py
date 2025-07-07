@@ -30,11 +30,6 @@ def run(config: DictConfig) -> None:
         
    trainer = MTLTrainer(config.experiment, config.model)
    mtl_wrapper = trainer.run()
-   
-   if getattr(config.experiment, "prepare_recorder", False):
-       # (optionally log a message)
-       print("[INFO] prepare_recorder set → skipping evaluation step.")
-       return mtl_wrapper
 
    evaluator = MTLEvaluator(mtl_wrapper, config)
    evaluator.evaluate()

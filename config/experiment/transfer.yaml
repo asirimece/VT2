@@ -58,7 +58,7 @@ experiment:
   transfer:
     save_pooled_only: true  # if true, only one .pth (pooled) is saved
     save_strategy: universal   # "swa" or "best_run" or "universal"
-    universal_epochs: 1   # upper bound on pooled fine-tune
+    universal_epochs: 150   # upper bound on pooled fine-tune
     early_stop_patience: 5       # stop after 5 epochs with no val-loss drop
     swa_lr:    0.00005
     swa_start: 2    
