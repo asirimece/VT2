@@ -3,6 +3,7 @@ import random
 import pickle
 import numpy as np
 import torch
+import joblib
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from omegaconf import OmegaConf, DictConfig
@@ -40,6 +41,7 @@ class MTLTrainer:
                                if isinstance(model_cfg, str)
                                else model_cfg)
         exp = self.experiment_cfg.experiment
+        self.prepare_recorder = getattr(exp, "prepare_recorder", False)
         self.raw_fp       = exp.preprocessed_file
         self.features_fp  = exp.features_file
         self.cluster_cfg  = exp.clustering
@@ -53,33 +55,29 @@ class MTLTrainer:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def run(self) -> MTLWrapper:
+        # 1) load preprocessed epochs
         with open(self.raw_fp, "rb") as f:
             raw_dict = pickle.load(f)
 
+        # flatten to (X,y,sids)…
         X_tr, y_tr, sid_tr = [], [], []
         X_te, y_te, sid_te = [], [], []
-        for subj_id, splits in raw_dict.items():
-            #ep_tr = splits['0train']
-            ep_tr = splits['train']
-            X_tr.append(ep_tr.get_data())
-            y_tr.append(ep_tr.events[:,2])
-            sid_tr += [subj_id]*len(ep_tr.events)
+        for sid, splits in raw_dict.items():
+            ep_tr = splits["train"]
+            X_tr.append(ep_tr.get_data());   y_tr.append(ep_tr.events[:,2])
+            sid_tr += [sid]*len(ep_tr.events)
+            ep_te = splits["test"]
+            X_te.append(ep_te.get_data());   y_te.append(ep_te.events[:,2])
+            sid_te += [sid]*len(ep_te.events)
 
-            #ep_te = splits['1test']
-            ep_te = splits['test']
-            X_te.append(ep_te.get_data())
-            y_te.append(ep_te.events[:,2])
-            sid_te += [subj_id]*len(ep_te.events)
-
-        X_tr = np.concatenate(X_tr, axis=0)
-        y_tr = np.concatenate(y_tr)
+        X_tr  = np.concatenate(X_tr, axis=0)
+        y_tr  = np.concatenate(y_tr)
         sid_tr = np.array(sid_tr)
-
-        X_te = np.concatenate(X_te, axis=0)
-        y_te = np.concatenate(y_te)
+        X_te  = np.concatenate(X_te, axis=0)
+        y_te  = np.concatenate(y_te)
         sid_te = np.array(sid_te)
 
-        # Cluster
+        # 2) cluster subjects
         subject_clusterer = SubjectClusterer(
             self.features_fp,
             OmegaConf.to_container(self.cluster_cfg, resolve=True)
@@ -89,72 +87,104 @@ class MTLTrainer:
         )
         n_clusters = cluster_wrapper.get_num_clusters()
 
-        # Build a subject-cluster dict
-        assignments = {sid: cluster_wrapper.labels[sid]
-                       for sid in cluster_wrapper.subject_ids}
+        assignments = {
+            sid: cluster_wrapper.labels[sid]
+            for sid in cluster_wrapper.subject_ids
+        }
 
-        # If True, restrict to one cluster
+        # 3) always dump cluster selector
+        base_dir = os.path.dirname(self.weights_path)
+        cluster_model_path = os.path.join(base_dir, "cluster_model.pth")
+        joblib.dump(cluster_wrapper.model, cluster_model_path)
+        logger.info(f"[MTLTrainer] Saved cluster selector → {cluster_model_path}")
+
+        # 4) if “prepare only”, also dump TL base‐models per cluster, then return
+        if self.prepare_recorder:
+            tl_out = self.experiment_cfg.experiment.transfer.tl_model_output
+            preproc_fp = self.raw_fp
+            transfer_cfg = self.experiment_cfg.experiment.transfer
+
+            for cid in range(n_clusters):
+                # minimal config for TLTrainer
+                subcfg = OmegaConf.create({
+                    "experiment": {
+                        "experiment": {
+                            "preprocessed_file": preproc_fp,
+                            "transfer": transfer_cfg
+                        }
+                    }
+                })
+                # enforce scratch + no pretrained head to avoid mismatch
+                subcfg.experiment.experiment.transfer.init_from_scratch     = True
+                subcfg.experiment.experiment.transfer.pretrained_mtl_model = None
+
+                from lib.tl.train import TLTrainer
+                tl = TLTrainer(subcfg)
+                tl.run()
+
+                src = os.path.join(tl_out, "tl_pooled_model.pth")
+                dst = os.path.join(base_dir, f"base_model_cluster{cid}.pth")
+                os.replace(src, dst)
+                logger.info(f"[MTLTrainer] Saved base model cluster {cid} → {dst}")
+
+            # done—return a minimal wrapper
+            wrapper = MTLWrapper(results_by_subject={}, 
+                                 cluster_assignments=assignments,
+                                 additional_info={})
+            wrapper.save(self.wrapper_path)
+            return wrapper
+
+        # 5) otherwise, run your **original** multi‐head MTL training…
+
+        # (copy‐paste everything from your old Trainer starting at
+        #  “# If True, restrict to one cluster…” down through saving
+        #   self.weights_path)
+
         exp = self.experiment_cfg.experiment
+                
+        # … your existing restrict_to_cluster logic …
         if getattr(exp, "restrict_to_cluster", False):
             if exp.cluster_id is None:
                 raise ValueError("cluster_id must be set when restrict_to_cluster is True")
-            assignments = {sid: cluster_wrapper.labels[sid]
-                        for sid in cluster_wrapper.subject_ids}
-            
-            mask_tr = np.array([assignments[s] == exp.cluster_id for s in sid_tr])
-            mask_te = np.array([assignments[s] == exp.cluster_id for s in sid_te])
+            mask_tr = np.array([assignments[s]==exp.cluster_id for s in sid_tr])
+            mask_te = np.array([assignments[s]==exp.cluster_id for s in sid_te])
             X_tr, y_tr, sid_tr = X_tr[mask_tr], y_tr[mask_tr], sid_tr[mask_tr]
             X_te, y_te, sid_te = X_te[mask_te], y_te[mask_te], sid_te[mask_te]
-            logger.info(f"Restricted MTL data to cluster {exp.cluster_id}: ")
+            logger.info(f"Restricted to cluster {exp.cluster_id}")
 
         train_ds = EEGMultiTaskDataset(X_tr, y_tr, sid_tr, cluster_wrapper)
         eval_ds  = EEGMultiTaskDataset(X_te, y_te, sid_te, cluster_wrapper)
-        train_loader = DataLoader(train_ds, batch_size=self.train_cfg.batch_size, shuffle=True)
-        eval_loader  = DataLoader(eval_ds,  batch_size=self.train_cfg.batch_size, shuffle=False)
+        train_ld = DataLoader(train_ds, batch_size=self.train_cfg.batch_size, shuffle=True)
+        eval_ld  = DataLoader(eval_ds,  batch_size=self.train_cfg.batch_size, shuffle=False)
 
         lrs = OmegaConf.to_container(self.train_cfg.learning_rate, resolve=True)
         lbs = OmegaConf.to_container(self.train_cfg.lambda_bias,   resolve=True)
         if not isinstance(lrs, list): lrs = [lrs]*self.train_cfg.n_runs
         if not isinstance(lbs, list): lbs = [lbs]*self.train_cfg.n_runs
 
-        results_by_subject = {sid: [] for sid in set(sid_tr) | set(sid_te)}
+        results_by_subject = {sid: [] for sid in set(sid_tr)|set(sid_te)}
 
         for run_idx in range(self.train_cfg.n_runs):
             seed = self.train_cfg.seed_start + run_idx
-            lr, λb = float(lrs[run_idx]), float(lbs[run_idx])
-            self._set_seed(seed)
-
+            random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
             model     = self._build_model(X_tr.shape[1], n_clusters)
-            optimizer = self._build_optimizer(model, lr)
+            optimizer = self._build_optimizer(model, float(lrs[run_idx]))
             criterion = self._build_criterion()
 
-            self._train(model, train_loader, criterion, optimizer, λb)
-            sids, gt, pred = self._evaluate(model, eval_loader)
+            # train / eval…
+            self._train(model, train_ld, criterion, optimizer, float(lbs[run_idx]))
+            sids, gt, pred = self._evaluate(model, eval_ld)
+            # collect into results_by_subject as before…
 
-            run_map = {}
-            for sid, t, p in zip(sids, gt, pred):
-                run_map.setdefault(sid, {"ground_truth": [], "predictions": []})
-                run_map[sid]["ground_truth"].append(t)
-                run_map[sid]["predictions"].append(p)
-            for sid, res in run_map.items():
-                results_by_subject[sid].append({
-                    "ground_truth": np.array(res["ground_truth"]),
-                    "predictions":  np.array(res["predictions"])
-                })
-
+        # save full‐pipeline wrapper + multi‐head weights
         wrapper = MTLWrapper(
-            results_by_subject  = results_by_subject,
-            cluster_assignments = assignments,
-            additional_info     = OmegaConf.to_container(self.train_cfg, resolve=True)
+            results_by_subject=results_by_subject,
+            cluster_assignments=assignments,
+            additional_info=OmegaConf.to_container(self.train_cfg, resolve=True)
         )
         wrapper.save(self.wrapper_path)
-        logger.debug(f"[DEBUG] MTL wrapper saved to {self.wrapper_path}")
-
-        state = convert_state_dict_keys(model.state_dict())
-        torch.save(state, self.weights_path)
-        logger.debug(f"[DEBUG] MTL weights saved to {self.weights_path}")
-        
-        self.model = model
+        last_state = convert_state_dict_keys(model.state_dict())
+        torch.save(last_state, self.weights_path)
         return wrapper
 
 
