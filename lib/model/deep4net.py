@@ -10,8 +10,8 @@ class Deep4NetModel:
         if isinstance(self.config, dict):
             in_chans = self.config.get("in_chans", 22)
             #n_classes = self.config.get("n_classes", 4)
-            n_classes = self.config.get("n_classes",3)
-            n_times = self.config.get("n_times", 1000)
+            n_classes = self.config.get("n_classes",2)
+            n_times = self.config.get("n_times", 750)
             final_conv_length = self.config.get("final_conv_length", "auto")
         else:
             in_chans = self.config.in_chans

@@ -37,7 +37,7 @@ class Deep4NetTL(BaseEstimator, ClassifierMixin):
         # build backbone with 2 outputs
         self._net = Deep4Net(
             n_chans=n_chans, n_outputs=2, n_times=n_times,
-            sfreq=200, final_conv_length="auto"
+            sfreq=250, final_conv_length="auto"
         ).to(device)
         # load pooled weights
         state = torch.load(self.pooled_model_path, map_location=device)

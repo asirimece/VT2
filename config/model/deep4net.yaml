@@ -2,9 +2,10 @@ name: "deep4net"
 
 #in_chans: 22 # excluding EOG and stim
 in_chans: 8 # new dataset
-n_classes: 3
-#n_times: 500  
-n_times: 600  # new dataset
+#n_classes: 3
+n_classes: 2
+#n_times: 600  # new dataset
+n_times: 750  # resampled
 final_conv_length: auto 
 
 single:

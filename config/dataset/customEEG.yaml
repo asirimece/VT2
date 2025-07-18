@@ -8,7 +8,8 @@ dataset: 'CustomEEG'
 
 n_subjects: 85
 subjects: []  # Will be inferred from filenames
-sfreq: 200
+#sfreq: 200
+sfreq: 250
 n_channels: 8
 eeg_channels: ['Fz', 'C3', 'Cz', 'C4', 'PO7', 'Oz', 'PO8', 'Pz']
 eog_channels: []
@@ -28,6 +29,14 @@ event_markers:
 unify_annotations: true
 
 # =======================
+# Supervised Task Setup
+# =======================
+supervised:
+  enabled: true             # enable for binary classification
+  classes: [0,1]
+  ignore_labels: [2]
+
+# =======================
 # Preprocessing
 # =======================
 preprocessing:
@@ -36,7 +45,12 @@ preprocessing:
   save_ica_plots: false
   ica_plots_dir: null
 
-  raw_preprocessors: {}              # Already filtered, resampled, and notch filtered
+  #raw_preprocessors: {}              # Already filtered, resampled, and notch filtered
+  raw_preprocessors: 
+    resample:
+      sfreq: 250                        
+      npad: 'auto'
+
 
   epoching:
     kwargs:

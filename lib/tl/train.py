@@ -1,3 +1,4 @@
+from itertools import product
 import types
 import os
 import pickle
@@ -73,34 +74,54 @@ class TLTrainer:
         best_sub = None
         swa_model = swa_sched = None
 
+        # 1) prepare the list of all (run_index, subject_id) tasks
+        runs = list(range(self.cfg.n_runs))
+        subs = sorted(data.keys())
+        tasks = list(product(runs, subs))
+
+        # Single progress bar over all tasks
+        pbar = tqdm(
+            tasks,
+            desc="TL Training",
+            total=len(tasks),
+            unit="task",
+            dynamic_ncols=True
+        )
+        
         # 2) per-subject TL
-        for run_i in range(self.cfg.n_runs):
+        for run_i, sub in pbar:
             self._set_seed(self.cfg.seed_start + run_i)
-            for sub in subs:
-                Xtr, ytr, Xte, yte = self._load_data(data, sub)
-                self._build_model(Xtr, sub)
-                self.optimizer = self._build_optimizer()
+            
+            Xtr, ytr, Xte, yte = self._load_data(data, sub)
+            self._build_model(Xtr, sub)
+            self.optimizer = self._build_optimizer()
 
-                if strategy == "swa" and swa_model is None:
-                    swa_model = AveragedModel(self.model)
-                    swa_sched = SWALR(self.optimizer, swa_lr=self.cfg.swa_lr)
+            if strategy == "swa" and swa_model is None:
+                swa_model = AveragedModel(self.model)
+                swa_sched = SWALR(self.optimizer, swa_lr=self.cfg.swa_lr)
 
-                tr_ld, te_ld = self._build_dataloaders(Xtr, ytr, Xte, yte)
-                self._train(tr_ld, sub,
-                            strategy=strategy,
-                            swa_model=swa_model,
-                            swa_sched=swa_sched,
-                            swa_start=self.cfg.swa_start)
+            tr_ld, te_ld = self._build_dataloaders(Xtr, ytr, Xte, yte)
+            self._train(tr_ld, sub,
+                        strategy=strategy,
+                        swa_model=swa_model,
+                        swa_sched=swa_sched,
+                        swa_start=self.cfg.swa_start)
 
-                wrap = self._evaluate(te_ld, sub)
-                all_results[sub].append(wrap)
+            wrap = self._evaluate(te_ld, sub)
+            all_results[sub].append(wrap)
 
-                if strategy == "best_run":
-                    acc = (wrap.predictions == wrap.ground_truth).mean()
-                    if acc > best_acc:
-                        best_acc = acc
-                        best_state = self.model.state_dict().copy()
-                        best_sub = sub
+            if strategy == "best_run":
+                acc = (wrap.predictions == wrap.ground_truth).mean()
+                if acc > best_acc:
+                    best_acc = acc
+                    best_state = self.model.state_dict().copy()
+                    best_sub = sub
+            # update postfix with useful info
+            pbar.set_postfix({
+                "run":      f"{run_i+1}/{self.cfg.n_runs}",
+                "subject":  sub,
+                "last_acc": f"{(wrap.predictions == wrap.ground_truth).mean():.3f}"
+            })
 
         # 3) prepare save
         os.makedirs(self.cfg.tl_model_output, exist_ok=True)
@@ -262,7 +283,7 @@ class TLTrainer:
 
     def _load_data(self, data, sub):
         tr, te = data[sub]["train"], data[sub]["test"]
-        return tr.get_data(), tr.events[:,-1], te.get_data(), te.events[:,-1]
+        return tr.get_data(), tr.events[:, -1], te.get_data(), te.events[:, -1]
 
     def _build_model(self, X, sub):
         n_ch, win = X.shape[1], X.shape[2]

@@ -45,7 +45,7 @@ class Deep4NetTL(BaseEstimator, ClassifierMixin):
             n_chans=n_chans,
             n_outputs=2,
             n_times=n_times,
-            sfreq=200,
+            sfreq=250,
             final_conv_length="auto"
         ).to(device)
 

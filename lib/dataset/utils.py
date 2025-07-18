@@ -1,9 +1,17 @@
 import os
 import pickle
+import numpy as np
 from lib.logging import logger
 
 logger = logger.get()
 
+
+def apply_label_filter(self, X, y, tids):
+        """If supervised.enabled, drop any sample whose label is in drop_labels."""
+        if not self.sup_enabled:
+            return X, y, tids
+        mask = np.array([lbl in self.keep_labels for lbl in y])
+        return X[mask], y[mask], tids[mask]
 
 def load_preprocessed_data(path: str):
     with open(path, 'rb') as f: 
@@ -30,3 +38,4 @@ def save_features(features, config, filename="./features.pkl"):
     
     with open(new_filename, "wb") as f:
         pickle.dump(features, f)
+        

@@ -18,9 +18,6 @@ def run(config: DictConfig) -> None:
    #preprocessor = Preprocessor(config)
    #preprocessed_data = preprocessor.run()
    #save_preprocessed_data(preprocessed_data, config.dataset.preprocessing.output_file)
-
-   with open("./dump/preprocessed_data_custom.pkl", "rb") as f:
-        preprocessed_data = pickle.load(f)
         
    #features = FeatureExtractor.run(config, preprocessed_data)
    #save_features(features, config.transform.output_file)
@@ -31,10 +28,11 @@ def run(config: DictConfig) -> None:
    trainer = MTLTrainer(config.experiment, config.model)
    mtl_wrapper = trainer.run()
    
-   if getattr(config.experiment, "prepare_recorder", False):
+   """if getattr(config.experiment, "prepare_recorder", False):
        # (optionally log a message)
        print("[INFO] prepare_recorder set → skipping evaluation step.")
        return mtl_wrapper
+"""
 
    evaluator = MTLEvaluator(mtl_wrapper, config)
    evaluator.evaluate()
