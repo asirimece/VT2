@@ -11,7 +11,7 @@ from sklearn.metrics import (
     confusion_matrix,
     classification_report
 )
-from lib.utils.recorder import Deep4NetTLWrapper
+from lib.tl.recorder import Deep4NetTLWrapper
 
 def load_epochs(fif_path):
     """Load raw .fif, extract epochs for left/right (0/1) and rest=2 if desired."""

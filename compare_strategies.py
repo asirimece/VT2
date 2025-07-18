@@ -3,7 +3,7 @@ import pickle
 import joblib
 import numpy as np
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
-from lib.utils.recorder import Deep4NetTLWrapper
+from lib.tl.recorder import Deep4NetTLWrapper
 
 PREPROC_PATH       = "dump/preprocessed_data_custom.pkl"
 BEST_JOBLIB        = "dump/trained_models/tl/best_run.joblib"
