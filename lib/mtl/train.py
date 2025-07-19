@@ -64,10 +64,10 @@ class MTLTrainer:
         X_te, y_te, sid_te = [], [], []
         for sid, splits in raw_dict.items():
             ep_tr = splits["train"]
-            X_tr.append(ep_tr.get_data());   y_tr.append(ep_tr.events[:,2])
+            X_tr.append(ep_tr.get_data());   y_tr.append(ep_tr.events[:, -1])
             sid_tr += [sid]*len(ep_tr.events)
             ep_te = splits["test"]
-            X_te.append(ep_te.get_data());   y_te.append(ep_te.events[:,2])
+            X_te.append(ep_te.get_data());   y_te.append(ep_te.events[:, -1])
             sid_te += [sid]*len(ep_te.events)
 
         X_tr  = np.concatenate(X_tr, axis=0)

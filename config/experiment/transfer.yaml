@@ -31,8 +31,8 @@ experiment:
 
   mtl:
     backbone:
-      #n_times: 500  
-      n_times: 600  # new dataset
+      #n_times: 600  # new dataset
+      n_times: 750  
       drop_prob: 0.15
       n_filters_time: 25
       n_filters_spat: 25
@@ -40,7 +40,7 @@ experiment:
       pool_time_length: 3
 
     model:
-      n_outputs: 3
+      n_outputs: 2
       backbone:
         dropout: 0.5
         n_times: 400
@@ -49,9 +49,9 @@ experiment:
         dropout: 0.5
 
     training:
-      n_runs: 3
+      n_runs: 1
       seed_start: 42
-      epochs: 100
+      epochs: 1
       batch_size: 64
       #learning_rate: [0.001, 0.005, 0.01]   
       learning_rate: [0.0001, 0.0001, 0.0001]
@@ -64,9 +64,9 @@ experiment:
     mtl_model_output: "dump/trained_models/mtl"
 
   transfer:
-    save_pooled_only: false  # if true, only one .pth (pooled) is saved
+    save_pooled_only: true  # if true, only one .pth (pooled) is saved
     save_strategy: universal   # "swa" or "best_run" or "universal"
-    universal_epochs: 1   # upper bound on pooled fine-tune
+    universal_epochs: 100   # upper bound on pooled fine-tune
     early_stop_patience: 5       # stop after 5 epochs with no val-loss drop
     swa_lr:    0.00005
     swa_start: 2    
@@ -77,9 +77,9 @@ experiment:
     freeze_until_layer: null  # freeze up to this layer, or null/None for none
     backbone_lr: 0.00001          # Lower LR for backbone
     head_lr: 0.001                # Higher LR for head(s)
-    n_runs: 3
+    n_runs: 1
     seed_start: 42
-    epochs: 100
+    epochs: 1
     #lr: 0.001
     lr: 0.0001
     weight_decay: 0.001
@@ -90,7 +90,7 @@ experiment:
     tl_model_output: "dump/trained_models/tl"
 
     model:
-      n_outputs: 3
+      n_outputs: 2
       n_clusters_pretrained: 4   # Number of clusters used during MTL pretraining.
     head_hidden_dim: 128
     head_dropout: 0.5

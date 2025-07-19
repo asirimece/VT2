@@ -66,6 +66,8 @@ class VisualEvaluator:
                               filename: str = "confusion_matrix.png"):
         if "confusion_matrix" not in self.visualizations:
             return
+        
+        labels = labels if labels is not None else np.unique(ground_truth)
         cm = confusion_matrix(ground_truth, predictions, labels=labels)
         disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=labels)
         fig, ax = plt.subplots(figsize=(6,6))
@@ -81,6 +83,9 @@ class VisualEvaluator:
                        filename_prefix: str = "roc_curve"):
         if "roc_curve" not in self.visualizations:
             return
+        if probabilities is None:   # only if we have per-class scores
+            return
+        
         classes = np.unique(ground_truth)
         for cls in classes:
             binary_gt = (ground_truth == cls).astype(int)

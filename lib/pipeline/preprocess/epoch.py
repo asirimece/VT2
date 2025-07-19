@@ -46,7 +46,7 @@ def crop_subepochs(epochs, window_length, step_size, keep_codes=(1,2,3)):
     data = epochs.get_data()
     events = epochs.events
 
-    mask = np.isin(events[:, 2], keep_codes)
+    mask = np.isin(events[:, -1], keep_codes)
     data = data[mask]
     events = events[mask]
 
@@ -60,7 +60,7 @@ def crop_subepochs(epochs, window_length, step_size, keep_codes=(1,2,3)):
     # Map 1→0, 2→1, 3→2
     label_map = {code: idx for idx, code in enumerate(keep_codes)}
 
-    for trial_idx, raw_label in enumerate(events[:, 2]):
+    for trial_idx, raw_label in enumerate(events[:, -1]):
         mapped_label = label_map[raw_label]
         trial_data   = data[trial_idx]
         n_sub        = 1 + (trial_data.shape[1] - window_samples) // step_samples

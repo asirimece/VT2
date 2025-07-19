@@ -8,7 +8,7 @@ dataset: 'CustomEEG'
 
 n_subjects: 85
 subjects: []  # Will be inferred from filenames
-sfreq: 200
+sfreq: 250
 n_channels: 8
 eeg_channels: ['Fz', 'C3', 'Cz', 'C4', 'PO7', 'Oz', 'PO8', 'Pz']
 eog_channels: []
